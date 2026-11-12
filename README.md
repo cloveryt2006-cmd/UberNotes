@@ -28,3 +28,7 @@ open the UberNotes website at `https://cloveryt2006-cmd.github.io/UberNotes/`cli
 
 ## Run on Windows
 Double-click `UberNotes.bat` to open UberNotes in your default web browser. Keep `UberNotes.bat`, `OpenUberNotes.ps1`, and the app files together in the same folder. No installation is required.
+
+# The app gets deleted for every new up date! Make sure you can reinstall if needed!
+
+I do not plan to make many updates afterward so it shouldent' be a major issue. 
