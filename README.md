@@ -1,5 +1,5 @@
 # UberNotes
-UberNotes is a note taking webapp, designed for ease of use.
+UberNotes is a note taking webapp, designed for ease of use with an infinite canvas. You also don't need worry about the server going down because all of your notes are stored localy; you can use UberNotes offline!
 
 ## What you can add
 - **Notes** and **to-dos**
