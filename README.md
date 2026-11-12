@@ -1,5 +1,6 @@
-# UberNotes
+# What is UberNotes?
 UberNotes is a note taking webapp, designed for ease of use, and meant to be used on any device!
+UberNotes runs locally on your PC; Even if you disconnect Wi-Fi, your notes will stay intact and secure. 
 
 ## Run as WebApp (recommended)
 1) insert `https://cloveryt2006-cmd.github.io/UberNotes/` into a chromeium based browser (eg. Google Chrome, Brave, Opera, Vivaldi...)
