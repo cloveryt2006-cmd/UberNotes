@@ -16,3 +16,6 @@ You now have the UberNotes WebApp! This runs in your browser and only the browse
    
 ## Run on Windows
 Double-click `UberNotes.bat` to open UberNotes in your default web browser. The launcher opens the app beside itself when possible; otherwise, it searches local fixed drives for `UberNotes-main\index.html`. Keep `Start UberNotes.bat`, `OpenUberNotes.ps1`, and the app files together in the same folder.
+
+##Notices
+I hope to get this as a full app on mobile app stores BUT the website does work in mobile although a lil buggy. 
