@@ -20,7 +20,11 @@ Everything is saved in your browser with `localStorage`. Because of that, PDF an
 ## Touch screens
 Drag with one finger to pan, pinch with two fingers to zoom, and double-tap the canvas to jump between 100% and 200%. The zoom buttons grow larger on touch devices so they are easier to tap.
 
-## Run on Windows
-Double-click `UberNotes.bat` to open UberNotes in your default web browser. It runs `OpenUberNotes.ps1`, which serves this folder at `http://localhost:8765/` and opens that address. Closing the console window stops the server. If the server can't start, it opens `index.html` directly instead.
+#UberNotes WebApp (Recomended)
+open the UberNotes website at `https://cloveryt2006-cmd.github.io/UberNotes/`click on the top right of your search bar, that displays a webapp icon, click the "Install UberNote App" and "add to desktop"
 
-Keep `UberNotes.bat`, `OpenUberNotes.ps1`, and the app files together in the same folder. No installation is required.
+<img width="1488" height="699" alt="Screenshot 2026-11-11 224828" src="https://github.com/user-attachments/assets/fd021725-5d36-4702-984d-ca17f294ca86" />
+
+
+## Run on Windows
+Double-click `UberNotes.bat` to open UberNotes in your default web browser. Keep `UberNotes.bat`, `OpenUberNotes.ps1`, and the app files together in the same folder. No installation is required.
