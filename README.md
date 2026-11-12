@@ -1,21 +1,26 @@
-# What is UberNotes?
-UberNotes is a note taking webapp, designed for ease of use, and meant to be used on any device!
-UberNotes runs locally on your PC; Even if you disconnect Wi-Fi, your notes will stay intact and secure. 
+# UberNotes
+UberNotes is a note taking webapp, designed for ease of use.
 
-## Run as WebApp (recommended)
-1) insert `https://cloveryt2006-cmd.github.io/UberNotes/` into a chromeium based browser (eg. Google Chrome, Brave, Opera, Vivaldi...)
+## What you can add
+- **Notes** and **to-dos**
+- **Quick Capture** with Ctrl/Cmd+Shift+Space; paste text on the canvas to create notes, or paste a URL to create a link
+- **To-do due dates** with cross-board Today and Overdue views
+- **Recurring to-dos** — daily, weekly, or monthly; completing one creates its next occurrence
+- **Trash** to restore deleted to-do items, cards, and boards, or remove them permanently
+- **Move or copy cards** between boards from a card's options menu
+- **Images** and **links**
+- **Boards** that nest other boards
+- **Tables** with editable rows and columns; numeric columns show a live sum and average
+- **Files** — PDF and MP4, with an inline preview
 
-2) click the icon to the right of your search bar "Install UberNotes App?"
+Images, PDFs, and MP4s copied to the clipboard can also be pasted onto the canvas.
 
-3) click "Install" and "add to desktop"
-<img width="1920" height="1002" alt="Screenshot 2026-11-11 224748" src="https://github.com/user-attachments/assets/b4ba9223-9098-48a8-9add-fba6afbde20a" />
+Everything is saved in your browser with `localStorage`. Because of that, PDF and MP4 files are capped at 2.5 MB each. Use **Export** to keep a JSON backup.
 
-<img width="1488" height="699" alt="Screenshot 2026-11-11 224828" src="https://github.com/user-attachments/assets/0e7727fd-c1e9-4210-a82a-bf58c6cb9efe" />
+## Touch screens
+Drag with one finger to pan, pinch with two fingers to zoom, and double-tap the canvas to jump between 100% and 200%. The zoom buttons grow larger on touch devices so they are easier to tap.
 
-You now have the UberNotes WebApp! This runs in your browser and only the browser you installed it from, if you wish to switch browsers I recommend "Exporting" the app and "Importing" the `.json` file.
-   
 ## Run on Windows
-Double-click `UberNotes.bat` to open UberNotes in your default web browser. The launcher opens the app beside itself when possible; otherwise, it searches local fixed drives for `UberNotes-main\index.html`. Keep `Start UberNotes.bat`, `OpenUberNotes.ps1`, and the app files together in the same folder.
+Double-click `UberNotes.bat` to open UberNotes in your default web browser. It runs `OpenUberNotes.ps1`, which serves this folder at `http://localhost:8765/` and opens that address. Closing the console window stops the server. If the server can't start, it opens `index.html` directly instead.
 
-## Notices
-I hope to get this as a full app on mobile app stores BUT the website does work in mobile although a lil buggy. 
+Keep `UberNotes.bat`, `OpenUberNotes.ps1`, and the app files together in the same folder. No installation is required.

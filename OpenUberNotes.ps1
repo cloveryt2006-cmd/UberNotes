@@ -1,106 +1,106 @@
+<#
+  OpenUberNotes.ps1
+  Starts a small local web server for this folder and opens UberNotes in the
+  default browser. UberNotes.bat calls this script.
+
+  Serving over http://localhost is needed so the app's manifest and service
+  worker behave normally; opening index.html directly still works as a
+  fallback if the server cannot start.
+#>
+
 $ErrorActionPreference = 'Stop'
-$appFolderName = 'UberNotes-main'
-$indexFileName = 'index.html'
-$foundPath = $null
 
-if ((Split-Path -Leaf $PSScriptRoot) -ieq $appFolderName) {
-    $localIndex = Join-Path $PSScriptRoot $indexFileName
-    if (Test-Path -LiteralPath $localIndex -PathType Leaf) {
-        $foundPath = $localIndex
+# The app files live in the same folder as this script.
+$root = $PSScriptRoot
+
+# Returns $true when a URL answers with the UberNotes page.
+function Test-UberNotesAt {
+  param([string]$Url)
+  try {
+    $res = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2
+    return ($res.StatusCode -eq 200 -and $res.Content -match 'UberNotes')
+  } catch {
+    return $false
+  }
+}
+
+# Reuse a server that is already serving this app instead of starting another.
+if (Test-UberNotesAt -Url 'http://localhost:8765/') {
+  Start-Process 'http://localhost:8765/'
+  exit 0
+}
+
+# File extensions the app uses, mapped to their content types.
+$types = @{
+  '.html'        = 'text/html; charset=utf-8'
+  '.css'         = 'text/css; charset=utf-8'
+  '.js'          = 'application/javascript; charset=utf-8'
+  '.json'        = 'application/json; charset=utf-8'
+  '.webmanifest' = 'application/manifest+json; charset=utf-8'
+  '.svg'         = 'image/svg+xml'
+  '.png'         = 'image/png'
+  '.jpg'         = 'image/jpeg'
+  '.jpeg'        = 'image/jpeg'
+  '.ico'         = 'image/x-icon'
+}
+
+# Bind the first free port in this range, starting at 8765.
+$listener = $null
+$port = 8765
+while ($port -le 8775 -and -not $listener) {
+  $candidate = New-Object System.Net.HttpListener
+  $candidate.Prefixes.Add("http://localhost:$port/")
+  try {
+    $candidate.Start()
+    $listener = $candidate
+  } catch {
+    $port++
+  }
+}
+
+# Fallback: no port could be bound, so open the file directly.
+if (-not $listener) {
+  Write-Host 'Could not start the local server. Opening index.html directly.'
+  Start-Process (Join-Path $root 'index.html')
+  exit 1
+}
+
+$url = "http://localhost:$port/"
+Write-Host "UberNotes is running at $url"
+Write-Host 'Close this window to stop the server.'
+
+# Open the app in the default browser.
+Start-Process $url
+
+# Serve files until the window is closed.
+while ($listener.IsListening) {
+  try {
+    $ctx = $listener.GetContext()
+
+    # Map "/" to index.html and drop any query string.
+    $path = $ctx.Request.Url.AbsolutePath.TrimStart('/')
+    if ([string]::IsNullOrWhiteSpace($path)) { $path = 'index.html' }
+
+    # Resolve the request inside the app folder only.
+    $full = [System.IO.Path]::GetFullPath((Join-Path $root $path))
+    $rootFull = [System.IO.Path]::GetFullPath($root)
+
+    if (-not $full.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $ctx.Response.StatusCode = 403
+    } elseif (Test-Path -LiteralPath $full -PathType Leaf) {
+      $bytes = [System.IO.File]::ReadAllBytes($full)
+      $ext = [System.IO.Path]::GetExtension($full).ToLowerInvariant()
+      $ctx.Response.ContentType = if ($types.ContainsKey($ext)) { $types[$ext] } else { 'application/octet-stream' }
+      $ctx.Response.ContentLength64 = $bytes.Length
+      # Always serve the current files so edits show up on refresh.
+      $ctx.Response.Headers['Cache-Control'] = 'no-store'
+      $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+    } else {
+      $ctx.Response.StatusCode = 404
     }
-}
 
-if (-not $foundPath) {
-    Write-Host "Searching local fixed drives for $appFolderName\$indexFileName ..."
-    $scanErrors = @()
-    $drives = [System.IO.DriveInfo]::GetDrives() |
-        Where-Object { $_.DriveType -eq [System.IO.DriveType]::Fixed -and $_.IsReady }
-
-    foreach ($drive in $drives) {
-        $folders = Get-ChildItem -LiteralPath $drive.RootDirectory.FullName `
-            -Directory -Filter $appFolderName -Recurse -Force `
-            -ErrorAction SilentlyContinue -ErrorVariable +scanErrors
-
-        foreach ($folder in $folders) {
-            $candidate = Join-Path $folder.FullName $indexFileName
-            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-                $foundPath = $candidate
-                break
-            }
-        }
-
-        if ($foundPath) {
-            break
-        }
-    }
-}
-
-if (-not $foundPath) {
-    Write-Host "Could not find $appFolderName\$indexFileName on the local fixed drives."
-    if ($scanErrors.Count -gt 0) {
-        Write-Host 'Some folders could not be searched because Windows denied access.'
-    }
-    exit 1
-}
-
-$browserPath = $null
-$browserExecutableNames = @('msedge.exe', 'chrome.exe', 'firefox.exe', 'brave.exe', 'opera.exe', 'vivaldi.exe')
-$httpAssociationPath = 'HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice'
-
-try {
-    $browserProgId = (Get-ItemProperty -LiteralPath $httpAssociationPath -Name ProgId).ProgId
-    $browserCommandPath = "Registry::HKEY_CLASSES_ROOT\$browserProgId\shell\open\command"
-    $browserCommand = (Get-Item -LiteralPath $browserCommandPath).GetValue('')
-    $browserMatch = [regex]::Match(
-        $browserCommand,
-        '^\s*(?:"(?<exe>[^"]+\.exe)"|(?<exe>.+?\.exe))(?=\s|$)',
-        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
-    )
-    if ($browserMatch.Success) {
-        $candidateBrowser = $browserMatch.Groups['exe'].Value
-        $browserName = Split-Path -Leaf $candidateBrowser
-        $isKnownBrowser = $browserName -in $browserExecutableNames -or
-            ($browserName -ieq 'launcher.exe' -and $candidateBrowser -match '\\Opera\\')
-        if ($isKnownBrowser -and (Test-Path -LiteralPath $candidateBrowser -PathType Leaf)) {
-            $browserPath = $candidateBrowser
-        }
-    }
-} catch {
-    Write-Host "Could not read the default browser for web links; checking common browser locations. $($_.Exception.Message)"
-}
-
-if (-not $browserPath) {
-    $browserCandidates = @(
-        (Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe'),
-        (Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge\Application\msedge.exe'),
-        (Join-Path $env:ProgramFiles 'Google\Chrome\Application\chrome.exe'),
-        (Join-Path ${env:ProgramFiles(x86)} 'Google\Chrome\Application\chrome.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Google\Chrome\Application\chrome.exe'),
-        (Join-Path $env:ProgramFiles 'Mozilla Firefox\firefox.exe'),
-        (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\firefox.exe'),
-        (Join-Path $env:ProgramFiles 'BraveSoftware\Brave-Browser\Application\brave.exe'),
-        (Join-Path $env:LOCALAPPDATA 'BraveSoftware\Brave-Browser\Application\brave.exe'),
-        (Join-Path $env:ProgramFiles 'Vivaldi\Application\vivaldi.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Vivaldi\Application\vivaldi.exe'),
-        (Join-Path $env:ProgramFiles 'Opera\launcher.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\Opera\launcher.exe')
-    )
-    $browserPath = $browserCandidates |
-        Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } |
-        Select-Object -First 1
-}
-
-if (-not $browserPath) {
-    Write-Error 'Could not find an installed browser. Install a browser or set a default browser for web links.'
-    exit 1
-}
-
-$fileUri = ([System.Uri]$foundPath).AbsoluteUri
-Write-Host "Opening $fileUri in $browserPath"
-try {
-    Start-Process -FilePath $browserPath -ArgumentList ('"{0}"' -f $fileUri)
-} catch {
-    Write-Error "Could not open the app in the browser: $($_.Exception.Message)"
-    exit 1
+    $ctx.Response.OutputStream.Close()
+  } catch {
+    Write-Host $_.Exception.Message
+  }
 }

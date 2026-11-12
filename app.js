@@ -16,8 +16,12 @@ const SIZES = {
   todo: { w: 280, h: 240 },
   image: { w: 310, h: 260 },
   link: { w: 300, h: 160 },
-  board: { w: 240, h: 170 }
+  board: { w: 240, h: 170 },
+  table: { w: 380, h: 320 },
+  file: { w: 320, h: 280 }
 };
+/* Largest PDF or video UberNotes will store in localStorage, in bytes. */
+const MAX_FILE_BYTES = 2.5 * 1024 * 1024;
 
 /**
  * Shorthand for document.querySelector, with an optional root element.
@@ -35,6 +39,83 @@ const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
  * Generates a short, collision-resistant ID with an optional prefix.
  */
 const uid = (prefix = 'id') => prefix + '_' + Math.random().toString(36).slice(2, 10);
+
+/**
+ * Parses a #rgb or #rrggbb color into channel values, or null when invalid.
+ */
+function hexToRgb(hex) {
+  let h = String(hex || '').trim().replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  if (!/^[0-9a-f]{6}$/i.test(h)) return null;
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16)
+  };
+}
+
+/**
+ * Formats red, green, and blue channels as a #rrggbb string.
+ */
+function rgbToHex(r, g, b) {
+  const part = n => clamp(Math.round(n), 0, 255).toString(16).padStart(2, '0');
+  return '#' + part(r) + part(g) + part(b);
+}
+
+/**
+ * Blends color a toward color b by t, where 0 keeps a and 1 gives b.
+ */
+function mixColor(a, b, t) {
+  const ca = hexToRgb(a);
+  const cb = hexToRgb(b);
+  if (!ca || !cb) return a;
+  return rgbToHex(ca.r + (cb.r - ca.r) * t, ca.g + (cb.g - ca.g) * t, ca.b + (cb.b - ca.b) * t);
+}
+
+/**
+ * Returns a color as an rgba() string with the given alpha.
+ */
+function withAlpha(hex, alpha) {
+  const c = hexToRgb(hex);
+  if (!c) return hex;
+  return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
+}
+
+/**
+ * True when a color is dark enough to need light text on top of it.
+ */
+function isDarkColor(hex) {
+  const c = hexToRgb(hex);
+  if (!c) return false;
+  return (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255 < 0.5;
+}
+
+/**
+ * Coerces a saved custom theme into valid hex colors.
+ */
+function normalizeCustomTheme(theme) {
+  const t = theme && typeof theme === 'object' ? theme : {};
+  const pick = (value, fallback) => {
+    const rgb = hexToRgb(value);
+    return rgb ? rgbToHex(rgb.r, rgb.g, rgb.b) : fallback;
+  };
+  return {
+    bg: pick(t.bg, DEFAULT_CUSTOM_THEME.bg),
+    accent: pick(t.accent, DEFAULT_CUSTOM_THEME.accent)
+  };
+}
+
+/**
+ * Derives readable panels and text from the custom background color.
+ */
+function customPalette(c) {
+  const dark = isDarkColor(c.bg);
+  return {
+    dark,
+    text: dark ? '#f1eee7' : '#26231e',
+    surface: dark ? mixColor(c.bg, '#ffffff', 0.08) : mixColor(c.bg, '#ffffff', 0.72)
+  };
+}
 
 const ICONS = {
   note: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8l6-6V5a2 2 0 0 0-2-2Z"/><path d="M14 21v-6h6"/>',
@@ -65,7 +146,12 @@ const ICONS = {
   external: '<path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M19 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"/>',
   front: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>',
   palette: '<path d="M12 21a9 9 0 1 1 9-9c0 2.2-1.8 3.5-3.5 3.5H16a2 2 0 0 0-1.4 3.4c.4.5.2 1.6-.8 1.9-.6.2-1.2.2-1.8.2Z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>',
-  keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/>'
+  brush: '<path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02Z"/>',
+  table: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9.5h18"/><path d="M9.5 9.5V20"/><path d="M15 9.5V20"/>',
+  file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 16.5h4"/>',
+  keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+  repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>'
 };
 
 /**
@@ -73,6 +159,226 @@ const ICONS = {
  */
 function icon(name, size = 18) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+}
+
+/** Typeface presets offered in the Themes dialog. */
+const FONTS = [
+  { id: 'sans', name: 'Sans', desc: 'Clean and neutral' },
+  { id: 'serif', name: 'Serif', desc: 'Warm and editorial' },
+  { id: 'rounded', name: 'Rounded', desc: 'Soft and friendly' },
+  { id: 'mono', name: 'Mono', desc: 'Even and technical' }
+];
+
+/** Starting palette for a new custom theme. */
+const DEFAULT_CUSTOM_THEME = {
+  bg: '#f4f1ea',
+  accent: '#5b5bd6'
+};
+
+function isValidDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
+function localDateString(date = new Date()) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ].join('-');
+}
+
+function nextDueDate(value, repeat) {
+  const [year, month, day] = value.split('-').map(Number);
+  const today = localDateString();
+  let date;
+  if (repeat === 'monthly') {
+    let monthOffset = 1;
+    do {
+      const monthIndex = month - 1 + monthOffset;
+      const targetYear = year + Math.floor(monthIndex / 12);
+      const targetMonth = monthIndex % 12;
+      const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+      date = new Date(targetYear, targetMonth, Math.min(day, lastDay));
+      monthOffset++;
+    } while (localDateString(date) <= today);
+  } else {
+    const interval = repeat === 'weekly' ? 7 : 1;
+    date = new Date(year, month - 1, day);
+    do {
+      date.setDate(date.getDate() + interval);
+    } while (localDateString(date) <= today);
+  }
+  return localDateString(date);
+}
+
+/** CSS custom properties that a custom theme overrides. */
+const THEME_VARS = [
+  '--bg', '--sidebar', '--surface', '--surface-2', '--hover',
+  '--text', '--text-2', '--text-3', '--border', '--border-strong',
+  '--dot', '--accent', '--accent-hover', '--accent-soft', '--accent-ring',
+  '--line', '--line-strong'
+];
+
+/* ---------------- table & file data ---------------- */
+
+/** Default column labels for a brand-new table card. */
+const TABLE_DEFAULT_COLS = ['Item', 'Qty', 'Price'];
+
+/**
+ * Builds the starting columns and rows for a new table card.
+ */
+function defaultTable() {
+  const cols = TABLE_DEFAULT_COLS.map(label => ({ id: uid('col'), label }));
+  const rows = [0, 1, 2].map(() => ({ id: uid('row'), cells: cols.map(() => '') }));
+  return { cols, rows };
+}
+
+/**
+ * Repairs a table card so columns, rows, and cells always line up.
+ */
+function normalizeTable(item) {
+  const raw = item.table && typeof item.table === 'object' ? item.table : {};
+  let cols = Array.isArray(raw.cols) ? raw.cols.filter(c => c && typeof c === 'object') : [];
+  cols = cols.map((c, i) => ({
+    id: typeof c.id === 'string' && c.id ? c.id : uid('col'),
+    label: typeof c.label === 'string' ? c.label : 'Column ' + (i + 1)
+  }));
+  if (!cols.length) {
+    cols = TABLE_DEFAULT_COLS.map(label => ({ id: uid('col'), label }));
+  }
+  let rows = Array.isArray(raw.rows) ? raw.rows.filter(r => r && typeof r === 'object') : [];
+  rows = rows.map(r => {
+    const cells = Array.isArray(r.cells) ? r.cells : [];
+    return {
+      id: typeof r.id === 'string' && r.id ? r.id : uid('row'),
+      cells: cols.map((_, i) => (cells[i] == null ? '' : String(cells[i])))
+    };
+  });
+  if (!rows.length) rows = [{ id: uid('row'), cells: cols.map(() => '') }];
+  item.table = { cols, rows };
+}
+
+/**
+ * Parses a table cell as a number, or returns null when it is not numeric.
+ */
+function cellNumber(value) {
+  const text = String(value == null ? '' : value).trim();
+  if (!text) return null;
+  if (!/^-?(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$/.test(text)) return null;
+  return Number(text.replace(/,/g, ''));
+}
+
+/**
+ * Formats a computed number for the table summary row.
+ */
+function formatNumber(n) {
+  if (!Number.isFinite(n)) return '';
+  return Number(Math.round(n * 100) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+/**
+ * Repairs a file card so its metadata and data URL are always valid.
+ */
+function normalizeFile(item) {
+  const raw = item.file && typeof item.file === 'object' ? item.file : null;
+  if (!raw || typeof raw.data !== 'string' || !raw.data.startsWith('data:')) {
+    item.file = null;
+    return;
+  }
+  item.file = {
+    name: typeof raw.name === 'string' && raw.name ? raw.name : 'File',
+    mime: typeof raw.mime === 'string' ? raw.mime : '',
+    size: Number.isFinite(raw.size) ? raw.size : 0,
+    data: raw.data
+  };
+}
+
+/**
+ * True when a file is a PDF or an MP4 video.
+ */
+function isSupportedFile(file) {
+  const name = (file.name || '').toLowerCase();
+  return file.type === 'application/pdf' || file.type === 'video/mp4' ||
+    name.endsWith('.pdf') || name.endsWith('.mp4');
+}
+
+/**
+ * Formats a byte count as a short human-readable size.
+ */
+function formatBytes(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+/** Cached object URLs for file cards, keyed by card id. */
+const fileUrlCache = new Map();
+
+/**
+ * Converts a stored data URL into a Blob.
+ */
+function dataUrlToBlob(dataUrl) {
+  const comma = dataUrl.indexOf(',');
+  if (comma < 0) return null;
+  const meta = dataUrl.slice(0, comma);
+  const body = dataUrl.slice(comma + 1);
+  const mime = (meta.match(/^data:([^;]+)/) || [])[1] || 'application/octet-stream';
+  if (/;base64/i.test(meta)) {
+    try {
+      const binary = atob(body);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return new Blob([bytes], { type: mime });
+    } catch (err) {
+      console.warn('Could not decode file data', err);
+      return null;
+    }
+  }
+  try {
+    return new Blob([decodeURIComponent(body)], { type: mime });
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * Returns a reusable blob URL for a file card, rebuilding it if the data changed.
+ */
+function fileObjectUrl(item) {
+  if (!item.file || !item.file.data) return '';
+  const cached = fileUrlCache.get(item.id);
+  if (cached && cached.data === item.file.data) return cached.url;
+  if (cached) URL.revokeObjectURL(cached.url);
+  const blob = dataUrlToBlob(item.file.data);
+  if (!blob) {
+    fileUrlCache.delete(item.id);
+    return '';
+  }
+  const url = URL.createObjectURL(blob);
+  fileUrlCache.set(item.id, { data: item.file.data, url });
+  return url;
+}
+
+/**
+ * Releases the cached blob URL for one card.
+ */
+function forgetFileUrl(id) {
+  const cached = fileUrlCache.get(id);
+  if (!cached) return;
+  URL.revokeObjectURL(cached.url);
+  fileUrlCache.delete(id);
+}
+
+/**
+ * Releases every cached blob URL when the page is closed.
+ */
+function releaseFileUrls() {
+  fileUrlCache.forEach(entry => URL.revokeObjectURL(entry.url));
+  fileUrlCache.clear();
 }
 
 /* ---------------- state ---------------- */
@@ -83,11 +389,18 @@ let ui = {
   selectedConnection: null,
   connectFrom: null,
   boardFilter: '',
+  specialView: null,
   spaceDown: false,
   drag: null,
   resize: null,
   pan: null,
   marquee: null,
+  // Active touch points on the canvas, used for pinch-to-zoom.
+  touchPointers: new Map(),
+  pinch: null,
+  touchPinched: false,
+  lastTap: null,
+  touchHintShown: false,
   storageWarned: false
 };
 let navStack = [];
@@ -100,7 +413,10 @@ let saveTimer = null;
 function normalizeState(data) {
   if (!data || !Array.isArray(data.boards) || !data.boards.length) return null;
   data.views = data.views && typeof data.views === 'object' ? data.views : {};
-  data.theme = data.theme === 'dark' ? 'dark' : 'light';
+  data.theme = ['light', 'dark', 'custom'].includes(data.theme) ? data.theme : 'light';
+  data.customTheme = normalizeCustomTheme(data.customTheme);
+  data.font = FONTS.some(f => f.id === data.font) ? data.font : 'sans';
+  data.trash = Array.isArray(data.trash) ? data.trash.filter(entry => entry && typeof entry === 'object') : [];
   data.boards.forEach(board => {
     board.items = Array.isArray(board.items) ? board.items.filter(item => item && typeof item === 'object') : [];
     board.connections = Array.isArray(board.connections)
@@ -113,7 +429,22 @@ function normalizeState(data) {
       item.z = Number.isFinite(item.z) ? item.z : 1;
       item.w = Number.isFinite(item.w) ? item.w : (SIZES[item.type] || SIZES.note).w;
       item.h = Number.isFinite(item.h) ? item.h : (SIZES[item.type] || SIZES.note).h;
-      if (item.type === 'todo' && !Array.isArray(item.todos)) item.todos = [];
+      if (item.type === 'todo') {
+        if (typeof item.title !== 'string') item.title = '';
+        item.todos = Array.isArray(item.todos) ? item.todos.filter(todo => todo && typeof todo === 'object') : [];
+        item.todos.forEach(todo => {
+          if (typeof todo.id !== 'string') todo.id = uid('t');
+          if (typeof todo.text !== 'string') todo.text = '';
+          todo.done = todo.done === true;
+          if (!isValidDate(todo.dueDate)) {
+            delete todo.dueDate;
+            delete todo.repeat;
+          }
+          if (!['daily', 'weekly', 'monthly'].includes(todo.repeat)) delete todo.repeat;
+        });
+      }
+      if (item.type === 'table') normalizeTable(item);
+      if (item.type === 'file') normalizeFile(item);
     });
     board.connections = board.connections.filter(c =>
       typeof c.from === 'string' && typeof c.to === 'string' &&
@@ -208,7 +539,10 @@ function seedState() {
   return {
     version: 1,
     theme: 'light',
+    font: 'sans',
+    customTheme: { ...DEFAULT_CUSTOM_THEME },
     activeBoardId: welcomeId,
+    trash: [],
     views: {},
     boards: [
       {
@@ -279,7 +613,8 @@ function nextZ() {
  * True when the event target is an input, textarea, select, or contenteditable element.
  */
 function isTypingTarget(el) {
-  return !!el && (el.isContentEditable || el.matches('input, textarea, select'));
+  return !!(el && typeof el.matches === 'function' &&
+    (el.isContentEditable || el.matches('input, textarea, select')));
 }
 /**
  * Validates and normalizes an http(s) URL, returning null for anything else.
@@ -364,13 +699,15 @@ function saveNow() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     setSaved('Saved locally', '');
     ui.storageWarned = false;
+    return true;
   } catch (err) {
     console.error('Save failed', err);
     setSaved('Storage full', 'error');
     if (!ui.storageWarned) {
       ui.storageWarned = true;
-      toast('Local storage is full. Export a backup and remove a large image or two.', 'error');
+      toast('Local storage is full. Export a backup and remove a large image or file.', 'error');
     }
+    return false;
   }
 }
 
@@ -378,7 +715,7 @@ function saveNow() {
  * Serializes the undoable parts of the workspace.
  */
 function snapshot() {
-  return JSON.stringify({ boards: state.boards, activeBoardId: state.activeBoardId });
+  return JSON.stringify({ boards: state.boards, activeBoardId: state.activeBoardId, trash: state.trash });
 }
 
 /**
@@ -400,6 +737,7 @@ function pushHistory() {
 function restoreHistory() {
   const snap = JSON.parse(history.stack[history.index]);
   state.boards = snap.boards;
+  state.trash = Array.isArray(snap.trash) ? snap.trash : [];
   state.activeBoardId = snap.activeBoardId;
   if (!boardById(state.activeBoardId)) state.activeBoardId = state.boards[0].id;
   ui.selected.clear();
@@ -447,24 +785,67 @@ function updateBack() {
 /* ---------------- theme & sidebar shell ---------------- */
 
 /**
- * Applies the light or dark theme and updates the theme button icon.
+ * Applies the light, dark, or custom theme. Custom themes derive every
+ * supporting color from the four colors the user picks.
  */
 function applyTheme() {
-  document.documentElement.dataset.theme = state.theme;
-  const btn = $('#themeBtn');
-  if (btn) {
-    const ic = btn.querySelector('[data-icon]') || btn.querySelector('.ic');
-    if (ic) ic.innerHTML = icon(state.theme === 'dark' ? 'sun' : 'moon');
-    btn.title = state.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+  const root = document.documentElement;
+  const custom = state.theme === 'custom';
+  const c = state.customTheme || DEFAULT_CUSTOM_THEME;
+  const palette = custom ? customPalette(c) : null;
+  const dark = custom ? palette.dark : state.theme === 'dark';
+  root.dataset.theme = dark ? 'dark' : 'light';
+  root.dataset.custom = custom ? '1' : '0';
+  if (!custom) {
+    THEME_VARS.forEach(name => root.style.removeProperty(name));
+    return;
   }
+  const text = palette.text;
+  const surface = palette.surface;
+  const values = {
+    '--bg': c.bg,
+    '--sidebar': mixColor(surface, c.bg, 0.35),
+    '--surface': surface,
+    '--surface-2': mixColor(surface, text, 0.055),
+    '--hover': withAlpha(text, dark ? 0.07 : 0.06),
+    '--text': text,
+    '--text-2': mixColor(text, c.bg, 0.35),
+    '--text-3': mixColor(text, c.bg, 0.55),
+    '--border': withAlpha(text, dark ? 0.14 : 0.09),
+    '--border-strong': withAlpha(text, dark ? 0.24 : 0.16),
+    '--dot': withAlpha(text, dark ? 0.13 : 0.16),
+    '--accent': c.accent,
+    '--accent-hover': mixColor(c.accent, dark ? '#ffffff' : '#000000', 0.12),
+    '--accent-soft': withAlpha(c.accent, dark ? 0.14 : 0.1),
+    '--accent-ring': withAlpha(c.accent, dark ? 0.3 : 0.22),
+    '--line': withAlpha(text, dark ? 0.28 : 0.32),
+    '--line-strong': withAlpha(text, dark ? 0.5 : 0.6)
+  };
+  THEME_VARS.forEach(name => root.style.setProperty(name, values[name]));
 }
 
 /**
- * Switches between light and dark themes and saves the choice.
+ * Applies the saved typeface preset to the whole app.
  */
-function toggleTheme() {
-  state.theme = state.theme === 'dark' ? 'light' : 'dark';
+function applyFont() {
+  document.documentElement.dataset.font = state.font || 'sans';
+}
+
+/**
+ * Switches the color theme, saves it, and refreshes the Themes dialog.
+ */
+function setTheme(theme) {
+  state.theme = ['light', 'dark', 'custom'].includes(theme) ? theme : 'light';
   applyTheme();
+  saveSoon();
+}
+
+/**
+ * Switches the typeface preset, saves it, and refreshes the Themes dialog.
+ */
+function setFont(font) {
+  state.font = FONTS.some(f => f.id === font) ? font : 'sans';
+  applyFont();
   saveSoon();
 }
 
@@ -623,6 +1004,24 @@ function fitView() {
 function renderSidebar() {
   const list = $('#boardList');
   if (!list) return;
+  const today = localDateString();
+  let todayCount = 0;
+  let overdueCount = 0;
+  state.boards.forEach(board => board.items.forEach(item => {
+    if (item.type !== 'todo') return;
+    item.todos.forEach(todo => {
+      if (todo.done || !isValidDate(todo.dueDate)) return;
+      if (todo.dueDate === today) todayCount++;
+      else if (todo.dueDate < today) overdueCount++;
+    });
+  }));
+  $('#todayCount').textContent = String(todayCount);
+  $('#overdueCount').textContent = String(overdueCount);
+  $('#trashCount').textContent = String(state.trash.length);
+  $$('.smart-view').forEach(button => {
+    button.classList.toggle('active', button.dataset.view === ui.specialView);
+    button.onclick = () => openSmartView(button.dataset.view);
+  });
   const q = ui.boardFilter.trim().toLowerCase();
   const boards = state.boards.filter(b => !q || b.name.toLowerCase().includes(q));
   list.innerHTML = '';
@@ -678,11 +1077,24 @@ function renderTopbar() {
   const title = $('#boardTitle');
   const meta = $('#boardMeta');
   if (!board) return;
-  if (emoji) emoji.textContent = board.emoji;
-  if (title && document.activeElement !== title) title.value = board.name;
-  if (meta) {
-    const n = board.items.length;
-    meta.textContent = n + (n === 1 ? ' card' : ' cards');
+  if (ui.specialView) {
+    if (emoji) emoji.textContent = ui.specialView === 'today' ? '☀️' : ui.specialView === 'overdue' ? '⏰' : '🗑️';
+    if (title && document.activeElement !== title) title.value =
+      ui.specialView === 'today' ? 'Today' : ui.specialView === 'overdue' ? 'Overdue' : 'Trash';
+    if (title) title.readOnly = true;
+    if (meta) meta.textContent = ui.specialView === 'trash'
+      ? state.trash.length + (state.trash.length === 1 ? ' deleted item' : ' deleted items')
+      : ui.specialView === 'today'
+        ? 'Tasks due today'
+        : 'Past-due tasks';
+  } else {
+    if (emoji) emoji.textContent = board.emoji;
+    if (title && document.activeElement !== title) title.value = board.name;
+    if (title) title.readOnly = false;
+    if (meta) {
+      const n = board.items.length;
+      meta.textContent = n + (n === 1 ? ' card' : ' cards');
+    }
   }
   updateBack();
   updateHistoryButtons();
@@ -703,6 +1115,16 @@ function renderAll() {
 function renderBoard() {
   const board = currentBoard();
   if (!board) return;
+  if (ui.specialView) {
+    renderTaskView();
+    return;
+  }
+  $('#taskView').hidden = true;
+  $('#canvas').style.display = '';
+  $('#toolbar').hidden = false;
+  $('#canvasHint').hidden = false;
+  $('.zoombar').hidden = false;
+  $('#canvasWrap').classList.remove('has-task-view');
   const items = $('#items');
   items.innerHTML = '';
   const sorted = [...board.items].sort((a, b) => (a.z || 0) - (b.z || 0));
@@ -715,6 +1137,182 @@ function renderBoard() {
   renderTopbar();
 }
 
+function openSmartView(view) {
+  if (!['today', 'overdue', 'trash'].includes(view)) return;
+  ui.specialView = view;
+  ui.selected.clear();
+  ui.selectedConnection = null;
+  cancelConnect(true);
+  closeMenu();
+  renderAll();
+  closeMobileSidebar();
+}
+
+function renderTaskView() {
+  const view = $('#taskView');
+  const canvas = $('#canvas');
+  if (!view || !canvas) return;
+  canvas.style.display = 'none';
+  view.hidden = false;
+  $('#emptyState').hidden = true;
+  $('#toolbar').hidden = true;
+  $('#canvasHint').hidden = true;
+  $('.zoombar').hidden = true;
+  view.innerHTML = '';
+  $('#canvasWrap').classList.add('has-task-view');
+  view.onpointerdown = event => event.stopPropagation();
+
+  if (ui.specialView === 'trash') {
+    renderTrashView(view);
+    return;
+  }
+
+  const today = localDateString();
+  const entries = [];
+  state.boards.forEach(board => board.items.forEach(item => {
+    if (item.type !== 'todo') return;
+    item.todos.forEach(todo => {
+      if (todo.done || !isValidDate(todo.dueDate)) return;
+      const due = ui.specialView === 'today'
+        ? todo.dueDate === today
+        : todo.dueDate < today;
+      if (due) entries.push({ board, item, todo });
+    });
+  }));
+  entries.sort((a, b) => a.todo.dueDate.localeCompare(b.todo.dueDate));
+  if (!entries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'task-view-empty';
+    empty.textContent = ui.specialView === 'today'
+      ? 'Nothing due today. Add due dates to tasks to see them here.'
+      : 'You’re all caught up. Past-due tasks will show up here.';
+    view.append(empty);
+    return;
+  }
+  const list = document.createElement('div');
+  list.className = 'task-view-list';
+  entries.forEach(({ board, item, todo }) => {
+    const row = document.createElement('article');
+    row.className = 'task-view-row';
+    const check = document.createElement('button');
+    check.className = 'todo-check';
+    check.type = 'button';
+    check.title = 'Mark as done';
+    check.innerHTML = icon('check', 12);
+    check.addEventListener('click', () => toggleTodoDone(item, todo));
+    const body = document.createElement('div');
+    body.className = 'task-view-body';
+    const text = document.createElement('div');
+    text.className = 'task-view-text';
+    text.textContent = todo.text.trim() || 'Untitled task';
+    const meta = document.createElement('div');
+    meta.className = 'task-view-meta';
+    meta.textContent = board.name + ' · ' + (item.title.trim() || 'To-do');
+    const due = document.createElement('time');
+    due.className = 'task-view-due' + (todo.dueDate < today ? ' overdue' : '');
+    due.dateTime = todo.dueDate;
+    due.textContent = formatDueDate(todo.dueDate);
+    body.append(text, meta);
+    const open = document.createElement('button');
+    open.className = 'task-view-open';
+    open.type = 'button';
+    open.textContent = 'Open';
+    open.addEventListener('click', () => openTaskBoard(board.id, item.id));
+    row.append(check, body, due, open);
+    list.append(row);
+  });
+  view.append(list);
+}
+
+function formatDueDate(value) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+    .format(new Date(year, month - 1, day));
+}
+
+function openTaskBoard(boardId, itemId) {
+  ui.specialView = null;
+  openBoard(boardId);
+  ui.selected = new Set([itemId]);
+  renderBoard();
+  const item = itemById(itemId);
+  if (item) centerOnItem(item);
+}
+
+function renderTrashView(view) {
+  const header = document.createElement('div');
+  header.className = 'trash-view-head';
+  const label = document.createElement('span');
+  label.textContent = 'Deleted items stay here until you remove them permanently.';
+  header.append(label);
+  if (state.trash.length) {
+    const empty = document.createElement('button');
+    empty.className = 'btn danger';
+    empty.type = 'button';
+    empty.textContent = 'Empty Trash';
+    empty.addEventListener('click', emptyTrash);
+    header.append(empty);
+  }
+  view.append(header);
+  if (!state.trash.length) {
+    const empty = document.createElement('div');
+    empty.className = 'task-view-empty';
+    empty.textContent = 'Trash is empty.';
+    view.append(empty);
+    return;
+  }
+  const list = document.createElement('div');
+  list.className = 'task-view-list';
+  state.trash.slice().sort((a, b) => b.deletedAt - a.deletedAt).forEach(entry => {
+    const row = document.createElement('article');
+    row.className = 'task-view-row trash-view-row';
+    const body = document.createElement('div');
+    body.className = 'task-view-body';
+    const title = document.createElement('div');
+    title.className = 'task-view-text';
+    title.textContent = entry.kind === 'board'
+      ? entry.board.name
+      : entry.kind === 'task'
+        ? entry.todo.text.trim() || 'Untitled task'
+        : cardTitle(entry.item);
+    const meta = document.createElement('div');
+    meta.className = 'task-view-meta';
+    const parent = entry.kind === 'board' ? null : boardById(entry.boardId);
+    const parentItem = entry.kind === 'task' && parent
+      ? parent.items.find(item => item.id === entry.itemId && item.type === 'todo')
+      : null;
+    meta.textContent = entry.kind === 'board'
+      ? 'Board'
+      : entry.kind === 'task'
+        ? parentItem
+          ? 'Task · ' + parent.name + ' / ' + (parentItem.title.trim() || 'To-do')
+          : 'Task · restore its ' + (parent ? 'to-do card' : 'board') + ' first'
+        : 'Card' + (parent ? ' · ' + parent.name : ' · original board deleted');
+    body.append(title, meta);
+    const restore = document.createElement('button');
+    restore.className = 'btn ghost';
+    restore.type = 'button';
+    restore.textContent = 'Restore';
+    restore.addEventListener('click', () => restoreTrashEntry(entry.id));
+    const remove = document.createElement('button');
+    remove.className = 'btn danger';
+    remove.type = 'button';
+    remove.textContent = 'Delete forever';
+    remove.addEventListener('click', () => permanentlyDeleteTrashEntry(entry.id));
+    row.append(body, restore, remove);
+    list.append(row);
+  });
+  view.append(list);
+}
+
+function cardTitle(item) {
+  if (item.type === 'todo') return item.title.trim() || 'To-do';
+  if (item.type === 'note') return (item.text || '').split('\n')[0].trim() || 'Note';
+  if (item.type === 'link') return item.title || 'Link';
+  if (item.type === 'file') return item.file && item.file.name || 'File';
+  return item.type.charAt(0).toUpperCase() + item.type.slice(1);
+}
+
 /* ---------------- navigation ---------------- */
 
 /**
@@ -723,7 +1321,14 @@ function renderBoard() {
 function openBoard(id, options = {}) {
   const target = boardById(id);
   if (!target) return;
+  const wasSpecialView = !!ui.specialView;
+  ui.specialView = null;
+  if (state.activeBoardId === id && !wasSpecialView) {
+    closeMobileSidebar();
+    return;
+  }
   if (state.activeBoardId === id) {
+    renderAll();
     closeMobileSidebar();
     return;
   }
@@ -790,6 +1395,8 @@ function buildCard(item) {
   else if (item.type === 'link') buildLink(el, item);
   else if (item.type === 'board') buildBoardCard(el, item);
   else if (item.type === 'image') buildImage(el, item);
+  else if (item.type === 'table') buildTable(el, item);
+  else if (item.type === 'file') buildFile(el, item);
 
   el.addEventListener('pointerdown', e => onCardPointerDown(e, item));
   el.addEventListener('click', e => onCardClick(e, item));
@@ -881,6 +1488,7 @@ function buildTodo(el, item) {
     item.todos.push({ id: uid('t'), text: '', done: false });
     renderTodoRows(list, item);
     saveSoon();
+    renderSidebar();
     pushHistory();
     if (focusLast) {
       const rows = $$('.todo-text', list);
@@ -916,12 +1524,7 @@ function renderTodoRows(list, item) {
     check.addEventListener('pointerdown', e => e.stopPropagation());
     check.addEventListener('click', e => {
       e.stopPropagation();
-      pushHistory();
-      todo.done = !todo.done;
-      row.classList.toggle('done', todo.done);
-      check.title = todo.done ? 'Mark as not done' : 'Mark as done';
-      saveSoon();
-      pushHistory();
+      toggleTodoDone(item, todo);
     });
 
     const text = document.createElement('div');
@@ -946,6 +1549,86 @@ function renderTodoRows(list, item) {
       }
     });
 
+    const meta = document.createElement('div');
+    meta.className = 'todo-meta';
+    const dueControl = document.createElement('label');
+    dueControl.className = 'todo-control todo-date-control';
+    dueControl.title = 'Set due date';
+    const dueIcon = document.createElement('span');
+    dueIcon.className = 'todo-control-icon';
+    dueIcon.innerHTML = icon('calendar', 12);
+    const dueLabel = document.createElement('span');
+    dueLabel.className = 'todo-control-label';
+    dueLabel.textContent = 'Due date';
+    const dueValue = document.createElement('span');
+    dueValue.className = 'todo-date-value';
+    dueValue.textContent = isValidDate(todo.dueDate) ? formatDueDate(todo.dueDate) : '';
+    const dueDate = document.createElement('input');
+    dueDate.className = 'todo-due-date';
+    dueDate.type = 'date';
+    dueDate.value = isValidDate(todo.dueDate) ? todo.dueDate : '';
+    dueDate.classList.toggle('has-value', !!dueDate.value);
+    dueDate.setAttribute('aria-label', 'Due date');
+    dueDate.addEventListener('pointerdown', e => e.stopPropagation());
+    dueDate.addEventListener('click', e => e.stopPropagation());
+    dueDate.addEventListener('change', () => {
+      pushHistory();
+      if (dueDate.value) todo.dueDate = dueDate.value;
+      else {
+        delete todo.dueDate;
+        delete todo.repeat;
+        repeat.value = '';
+      }
+      dueDate.classList.toggle('has-value', !!dueDate.value);
+      dueValue.textContent = dueDate.value ? formatDueDate(dueDate.value) : '';
+      saveSoon();
+      renderSidebar();
+      pushHistory();
+    });
+    dueControl.append(dueIcon, dueLabel, dueValue, dueDate);
+
+    const repeatControl = document.createElement('label');
+    repeatControl.className = 'todo-control todo-repeat-control';
+    repeatControl.title = 'Repeat task';
+    const repeatIcon = document.createElement('span');
+    repeatIcon.className = 'todo-control-icon';
+    repeatIcon.innerHTML = icon('repeat', 12);
+    const repeat = document.createElement('select');
+    repeat.className = 'todo-repeat';
+    repeat.setAttribute('aria-label', 'Repeat task');
+    [
+      ['', 'Repeat'],
+      ['daily', 'Daily'],
+      ['weekly', 'Weekly'],
+      ['monthly', 'Monthly']
+    ].forEach(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      repeat.append(option);
+    });
+    repeat.value = todo.repeat || '';
+    repeat.addEventListener('pointerdown', e => e.stopPropagation());
+    repeat.addEventListener('click', e => e.stopPropagation());
+    repeat.addEventListener('change', () => {
+      if (repeat.value && !isValidDate(todo.dueDate)) {
+        repeat.value = '';
+        toast('Set a due date before adding a repeat', 'error');
+        return;
+      }
+      pushHistory();
+      if (repeat.value) todo.repeat = repeat.value;
+      else delete todo.repeat;
+      saveSoon();
+      pushHistory();
+    });
+    repeatControl.append(repeatIcon, repeat);
+
+    meta.append(dueControl, repeatControl);
+    const content = document.createElement('div');
+    content.className = 'todo-content';
+    content.append(text, meta);
+
     const remove = document.createElement('button');
     remove.className = 'todo-remove';
     remove.type = 'button';
@@ -955,15 +1638,53 @@ function renderTodoRows(list, item) {
     remove.addEventListener('click', e => {
       e.stopPropagation();
       pushHistory();
+      state.trash.push({
+        id: uid('trash'),
+        kind: 'task',
+        deletedAt: Date.now(),
+        boardId: state.activeBoardId,
+        itemId: item.id,
+        index,
+        todo: deepClone(todo)
+      });
       item.todos.splice(index, 1);
       renderTodoRows(list, item);
       saveSoon();
+      renderSidebar();
       pushHistory();
     });
 
-    row.append(check, text, remove);
+    row.append(check, content, remove);
     list.append(row);
   });
+}
+
+function toggleTodoDone(item, todo) {
+  const board = state.boards.find(candidate => candidate.items.includes(item));
+  if (!board) return;
+  pushHistory();
+  todo.done = !todo.done;
+  if (todo.done && todo.repeat && isValidDate(todo.dueDate)) {
+    const next = Object.assign({}, todo, {
+      id: uid('t'),
+      dueDate: nextDueDate(todo.dueDate, todo.repeat),
+      done: false
+    });
+    item.todos.splice(item.todos.indexOf(todo) + 1, 0, next);
+    delete todo.repeat;
+  }
+  saveSoon();
+  pushHistory();
+  if (ui.specialView) {
+    renderSidebar();
+    renderTaskView();
+    renderTopbar();
+    return;
+  }
+  const card = cardEl(item.id);
+  const list = card && $('.todo-list', card);
+  if (list) renderTodoRows(list, item);
+  renderSidebar();
 }
 
 /**
@@ -1033,6 +1754,7 @@ function buildLink(el, item) {
  */
 function buildBoardCard(el, item) {
   const target = boardById(item.boardId);
+  const inTrash = state.trash.some(entry => entry.kind === 'board' && entry.board.id === item.boardId);
   const body = document.createElement('div');
   body.className = 'board-card-body';
 
@@ -1042,11 +1764,11 @@ function buildBoardCard(el, item) {
 
   const name = document.createElement('div');
   name.className = 'board-card-name';
-  name.textContent = target ? target.name : 'Missing board';
+  name.textContent = target ? target.name : inTrash ? 'Board in Trash' : 'Missing board';
 
   const meta = document.createElement('div');
   meta.className = 'board-card-meta';
-  meta.textContent = target ? target.items.length + (target.items.length === 1 ? ' card' : ' cards') : 'This board was deleted';
+  meta.textContent = target ? target.items.length + (target.items.length === 1 ? ' card' : ' cards') : inTrash ? 'Restore it from Trash' : 'This board was deleted';
 
   body.append(emoji, name, meta);
 
@@ -1089,6 +1811,325 @@ function buildImage(el, item) {
     saveSoon();
   });
   el.append(caption);
+}
+
+/**
+ * Builds the table card with editable headers, cells, and a totals row.
+ */
+function buildTable(el, item) {
+  normalizeTable(item);
+  const body = document.createElement('div');
+  body.className = 'table-body';
+  const scroll = document.createElement('div');
+  scroll.className = 'table-scroll';
+  const actions = document.createElement('div');
+  actions.className = 'table-actions';
+  body.append(scroll, actions);
+  el.append(body);
+  renderTableGrid(scroll, actions, item);
+}
+
+/**
+ * Rebuilds the table grid after a row or column change.
+ */
+function renderTableGrid(scroll, actions, item) {
+  const table = item.table;
+  scroll.innerHTML = '';
+  const grid = document.createElement('table');
+  grid.className = 'table-grid';
+
+  // Header row with editable column names and per-column delete buttons.
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  table.cols.forEach((col, ci) => {
+    const th = document.createElement('th');
+    const label = document.createElement('div');
+    label.className = 'table-cell table-head-cell';
+    label.contentEditable = 'true';
+    label.spellcheck = false;
+    label.dataset.placeholder = 'Column';
+    label.textContent = col.label;
+    label.addEventListener('focus', () => pushHistory());
+    label.addEventListener('blur', () => pushHistory());
+    label.addEventListener('input', () => {
+      col.label = label.innerText;
+      saveSoon();
+    });
+    th.append(label);
+
+    const del = document.createElement('button');
+    del.className = 'table-col-del';
+    del.type = 'button';
+    del.title = 'Delete column';
+    del.setAttribute('aria-label', 'Delete column');
+    del.innerHTML = icon('x', 11);
+    del.addEventListener('pointerdown', e => e.stopPropagation());
+    del.addEventListener('click', e => {
+      e.stopPropagation();
+      if (table.cols.length <= 1) {
+        toast('A table needs at least one column');
+        return;
+      }
+      pushHistory();
+      table.cols.splice(ci, 1);
+      table.rows.forEach(row => row.cells.splice(ci, 1));
+      saveSoon();
+      renderTableGrid(scroll, actions, item);
+      pushHistory();
+    });
+    th.append(del);
+    headRow.append(th);
+  });
+  const headGutter = document.createElement('th');
+  headGutter.className = 'table-gutter';
+  headRow.append(headGutter);
+  thead.append(headRow);
+
+  // Body rows: one editable cell per column plus a hover delete gutter.
+  const tbody = document.createElement('tbody');
+  table.rows.forEach((row, ri) => {
+    const tr = document.createElement('tr');
+    table.cols.forEach((col, ci) => {
+      const td = document.createElement('td');
+      const cell = document.createElement('div');
+      cell.className = 'table-cell';
+      cell.contentEditable = 'true';
+      cell.spellcheck = false;
+      cell.dataset.row = String(ri);
+      cell.dataset.col = String(ci);
+      cell.textContent = row.cells[ci] || '';
+      cell.addEventListener('focus', () => pushHistory());
+      cell.addEventListener('blur', () => pushHistory());
+      cell.addEventListener('input', () => {
+        row.cells[ci] = cell.innerText;
+        saveSoon();
+        refreshTableSums(grid, item);
+      });
+      cell.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const below = grid.querySelector(`.table-cell[data-row="${ri + 1}"][data-col="${ci}"]`);
+          if (below) focusEditable(below);
+          else addTableRow(scroll, actions, item, ci);
+          return;
+        }
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const flat = $$('.table-cell[data-row]', grid);
+          const at = flat.indexOf(cell);
+          const target = flat[at + (e.shiftKey ? -1 : 1)];
+          if (target) focusEditable(target);
+          else if (!e.shiftKey) addTableRow(scroll, actions, item, 0);
+        }
+      });
+      td.append(cell);
+      tr.append(td);
+    });
+
+    const gutter = document.createElement('td');
+    gutter.className = 'table-gutter';
+    const del = document.createElement('button');
+    del.className = 'table-row-del';
+    del.type = 'button';
+    del.title = 'Delete row';
+    del.setAttribute('aria-label', 'Delete row');
+    del.innerHTML = icon('x', 11);
+    del.addEventListener('pointerdown', e => e.stopPropagation());
+    del.addEventListener('click', e => {
+      e.stopPropagation();
+      if (table.rows.length <= 1) {
+        toast('A table needs at least one row');
+        return;
+      }
+      pushHistory();
+      table.rows.splice(ri, 1);
+      saveSoon();
+      renderTableGrid(scroll, actions, item);
+      pushHistory();
+    });
+    gutter.append(del);
+    tr.append(gutter);
+    tbody.append(tr);
+  });
+
+  // Summary row: sum and average for every column holding numbers.
+  const tfoot = document.createElement('tfoot');
+  const footRow = document.createElement('tr');
+  table.cols.forEach((col, ci) => {
+    const td = document.createElement('td');
+    td.className = 'table-sum';
+    td.dataset.sumCol = String(ci);
+    footRow.append(td);
+  });
+  const footGutter = document.createElement('td');
+  footGutter.className = 'table-gutter';
+  footRow.append(footGutter);
+  tfoot.append(footRow);
+
+  grid.append(thead, tbody, tfoot);
+  scroll.append(grid);
+  refreshTableSums(grid, item);
+  renderTableActions(actions, scroll, item);
+}
+
+/**
+ * Appends a row to the table and optionally focuses one of its cells.
+ */
+function addTableRow(scroll, actions, item, focusCol) {
+  pushHistory();
+  item.table.rows.push({ id: uid('row'), cells: item.table.cols.map(() => '') });
+  saveSoon();
+  renderTableGrid(scroll, actions, item);
+  pushHistory();
+  if (Number.isInteger(focusCol)) {
+    const target = scroll.querySelector(
+      `.table-cell[data-row="${item.table.rows.length - 1}"][data-col="${focusCol}"]`
+    );
+    if (target) focusEditable(target);
+  }
+}
+
+/**
+ * Recomputes the sum and average cells without rebuilding the table.
+ */
+function refreshTableSums(grid, item) {
+  item.table.cols.forEach((col, ci) => {
+    const cell = grid.querySelector(`.table-sum[data-sum-col="${ci}"]`);
+    if (!cell) return;
+    let sum = 0;
+    let count = 0;
+    item.table.rows.forEach(row => {
+      const n = cellNumber(row.cells[ci]);
+      if (n !== null) {
+        sum += n;
+        count += 1;
+      }
+    });
+    if (!count) {
+      cell.textContent = '';
+      cell.title = 'Type numbers in this column to see a total';
+      return;
+    }
+    cell.textContent = 'Σ ' + formatNumber(sum) + '  ⌀ ' + formatNumber(sum / count);
+    cell.title = 'Sum ' + formatNumber(sum) + ' · Average ' + formatNumber(sum / count) +
+      ' · ' + count + (count === 1 ? ' number' : ' numbers');
+  });
+}
+
+/**
+ * Builds the add-row and add-column controls under a table.
+ */
+function renderTableActions(actions, scroll, item) {
+  actions.innerHTML = '';
+  const addRow = document.createElement('button');
+  addRow.className = 'table-add';
+  addRow.type = 'button';
+  addRow.textContent = '+ Row';
+  addRow.addEventListener('pointerdown', e => e.stopPropagation());
+  addRow.addEventListener('click', e => {
+    e.stopPropagation();
+    addTableRow(scroll, actions, item, 0);
+  });
+
+  const addCol = document.createElement('button');
+  addCol.className = 'table-add';
+  addCol.type = 'button';
+  addCol.textContent = '+ Column';
+  addCol.addEventListener('pointerdown', e => e.stopPropagation());
+  addCol.addEventListener('click', e => {
+    e.stopPropagation();
+    pushHistory();
+    item.table.cols.push({ id: uid('col'), label: 'Column ' + (item.table.cols.length + 1) });
+    item.table.rows.forEach(row => row.cells.push(''));
+    saveSoon();
+    renderTableGrid(scroll, actions, item);
+    pushHistory();
+  });
+
+  const hint = document.createElement('span');
+  hint.className = 'table-hint';
+  hint.textContent = 'Totals update automatically';
+
+  actions.append(addRow, addCol, hint);
+}
+
+/**
+ * Builds the file card: inline preview for PDFs and MP4s plus metadata.
+ */
+function buildFile(el, item) {
+  const file = item.file;
+  const isVideo = !!(file && (file.mime || '').startsWith('video/'));
+  const body = document.createElement('div');
+  body.className = 'file-body';
+
+  const stage = document.createElement('div');
+  stage.className = 'file-stage';
+  const url = file ? fileObjectUrl(item) : '';
+
+  if (!file || !url) {
+    stage.classList.add('file-stage-empty');
+    const missing = document.createElement('div');
+    missing.className = 'file-missing';
+    missing.innerHTML = icon('file', 26);
+    const note = document.createElement('span');
+    note.textContent = file ? 'Preview unavailable' : 'File unavailable';
+    missing.append(note);
+    stage.append(missing);
+  } else if (isVideo) {
+    const video = document.createElement('video');
+    video.className = 'file-video';
+    video.controls = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    video.src = url;
+    stage.append(video);
+  } else {
+    const frame = document.createElement('iframe');
+    frame.className = 'file-frame';
+    frame.title = file.name;
+    frame.src = url + '#toolbar=0&navpanes=0&view=FitH';
+    stage.append(frame);
+  }
+
+  const meta = document.createElement('div');
+  meta.className = 'file-meta';
+
+  const badge = document.createElement('span');
+  badge.className = 'file-badge' + (isVideo ? ' is-video' : '');
+  badge.textContent = isVideo ? 'MP4' : 'PDF';
+
+  const info = document.createElement('div');
+  info.className = 'file-info';
+  const name = document.createElement('div');
+  name.className = 'file-name';
+  name.textContent = file ? file.name : 'Missing file';
+  name.title = file ? file.name : '';
+  const size = document.createElement('div');
+  size.className = 'file-size';
+  size.textContent = file
+    ? [isVideo ? 'MP4 video' : 'PDF document', formatBytes(file.size)].filter(Boolean).join(' · ')
+    : 'Add the file again';
+  info.append(name, size);
+  meta.append(badge, info);
+
+  if (file) {
+    const open = document.createElement('button');
+    open.className = 'file-open';
+    open.type = 'button';
+    open.title = 'Open in a new tab';
+    open.innerHTML = 'Open ' + icon('external', 11);
+    open.addEventListener('pointerdown', e => e.stopPropagation());
+    open.addEventListener('click', e => {
+      e.stopPropagation();
+      const target = fileObjectUrl(item);
+      if (target) window.open(target, '_blank');
+      else toast('Could not open this file', 'error');
+    });
+    meta.append(open);
+  }
+
+  body.append(stage, meta);
+  el.append(body);
 }
 
 /* ---------------- connections ---------------- */
@@ -1255,6 +2296,7 @@ function focusEditable(el) {
 function onCardPointerDown(e, item) {
   if (ui.connectFrom) return;
   if (ui.spaceDown) return;
+  if (ui.pinch || ui.touchPointers.size > 1) return;
   if (e.button !== 0) return;
   if (e.target.closest('button, a, input, textarea, select, [contenteditable], .resize-handle')) return;
   e.preventDefault();
@@ -1370,8 +2412,14 @@ function startResize(e, item) {
 function onResizeMove(e) {
   const r = ui.resize;
   if (!r) return;
-  const minW = r.item.type === 'note' ? 170 : r.item.type === 'board' ? 180 : 200;
-  const minH = r.item.type === 'todo' ? 140 : r.item.type === 'image' ? 150 : 110;
+  const minW = r.item.type === 'note' ? 170
+    : r.item.type === 'board' ? 180
+    : r.item.type === 'table' ? 240
+    : 200;
+  const minH = r.item.type === 'todo' ? 140
+    : r.item.type === 'image' ? 150
+    : r.item.type === 'table' ? 190
+    : 110;
   r.item.w = Math.max(minW, Math.round(r.w + (e.clientX - r.sx) / r.zoom));
   r.item.h = Math.max(minH, Math.round(r.h + (e.clientY - r.sy) / r.zoom));
   r.el.style.width = r.item.w + 'px';
@@ -1488,6 +2536,181 @@ function onPanUp() {
 }
 
 /**
+ * Cancels any drag, resize, or pan that was running before a pinch started.
+ * Cards stay where they were moved instead of jumping back.
+ */
+function cancelCanvasGestures() {
+  if (ui.drag) {
+    window.removeEventListener('pointermove', onDragMove);
+    const d = ui.drag;
+    ui.drag = null;
+    d.entries.forEach(entry => {
+      if (entry.el) {
+        entry.el.classList.remove('dragging');
+        entry.el.style.zIndex = String(entry.z || 1);
+      }
+    });
+    renderConnections();
+    saveSoon();
+  }
+  if (ui.resize) {
+    window.removeEventListener('pointermove', onResizeMove);
+    ui.resize = null;
+    saveSoon();
+  }
+  if (ui.pan) {
+    window.removeEventListener('pointermove', onPanMove);
+    ui.pan = null;
+    $('#canvasWrap').classList.remove('panning');
+    saveSoon();
+  }
+}
+
+/**
+ * Measures the distance and midpoint between the first two touches.
+ */
+function touchMetrics() {
+  const points = Array.from(ui.touchPointers.values());
+  const a = points[0];
+  const b = points[1];
+  return {
+    dist: Math.hypot(b.x - a.x, b.y - a.y) || 1,
+    midX: (a.x + b.x) / 2,
+    midY: (a.y + b.y) / 2
+  };
+}
+
+/**
+ * Starts a pinch gesture anchored on the world point under the fingers.
+ */
+function startPinch() {
+  cancelCanvasGestures();
+  const rect = $('#canvasWrap').getBoundingClientRect();
+  const v = getView();
+  const m = touchMetrics();
+  ui.pinch = {
+    dist: m.dist,
+    zoom: v.z,
+    worldX: (m.midX - rect.left - v.x) / v.z,
+    worldY: (m.midY - rect.top - v.y) / v.z
+  };
+  ui.touchPinched = true;
+  ui.lastTap = null;
+  document.body.classList.add('pinching');
+}
+
+/**
+ * Clears touch gesture state, for example when the window loses focus.
+ */
+function resetTouchState() {
+  ui.touchPointers.clear();
+  ui.pinch = null;
+  ui.touchPinched = false;
+  ui.lastTap = null;
+  document.body.classList.remove('pinching');
+}
+
+/**
+ * Tracks touch points so two fingers can pinch the canvas.
+ */
+function onTouchPointerDown(e) {
+  if (e.pointerType !== 'touch') return;
+  // A fresh primary touch means any older, missed pointers are stale.
+  if (e.isPrimary) {
+    ui.touchPointers.clear();
+    ui.pinch = null;
+    ui.touchPinched = false;
+    document.body.classList.remove('pinching');
+  }
+  // Gestures that start on floating controls should press the control, not zoom.
+  if (e.target.closest && e.target.closest('.toolbar, .zoombar, .canvas-hint, .empty-state')) return;
+  const interactive = !!(e.target.closest && e.target.closest(
+    '.card, button, a, input, textarea, select, [contenteditable]'
+  ));
+  ui.touchPointers.set(e.pointerId, {
+    x: e.clientX,
+    y: e.clientY,
+    startX: e.clientX,
+    startY: e.clientY,
+    moved: false,
+    interactive
+  });
+  // Mention the touch gestures once per browser session.
+  if (!ui.touchHintShown) {
+    ui.touchHintShown = true;
+    try {
+      if (!sessionStorage.getItem('ubernotes.touchHint')) {
+        sessionStorage.setItem('ubernotes.touchHint', '1');
+        toast('Pinch to zoom · double-tap to zoom in');
+      }
+    } catch (err) {
+      toast('Pinch to zoom · double-tap to zoom in');
+    }
+  }
+  if (ui.touchPointers.size === 2) startPinch();
+}
+
+/**
+ * Scales and pans the canvas while two fingers move.
+ */
+function onTouchPointerMove(e) {
+  const point = ui.touchPointers.get(e.pointerId);
+  if (!point) return;
+  point.x = e.clientX;
+  point.y = e.clientY;
+  if (Math.hypot(point.x - point.startX, point.y - point.startY) > 10) point.moved = true;
+  if (!ui.pinch || ui.touchPointers.size < 2) return;
+  // Keep the normal drag and pan handlers from reacting to each finger.
+  e.preventDefault();
+  e.stopPropagation();
+  const rect = $('#canvasWrap').getBoundingClientRect();
+  const v = getView();
+  const m = touchMetrics();
+  const nz = clamp(ui.pinch.zoom * (m.dist / ui.pinch.dist), MIN_ZOOM, MAX_ZOOM);
+  v.z = nz;
+  v.x = m.midX - rect.left - ui.pinch.worldX * nz;
+  v.y = m.midY - rect.top - ui.pinch.worldY * nz;
+  applyView();
+}
+
+/**
+ * Finishes a pinch and turns a quick double-tap into a zoom.
+ */
+function onTouchPointerUp(e) {
+  const point = ui.touchPointers.get(e.pointerId);
+  if (!point) return;
+  ui.touchPointers.delete(e.pointerId);
+  if (ui.pinch && ui.touchPointers.size < 2) {
+    ui.pinch = null;
+    document.body.classList.remove('pinching');
+    saveSoon();
+  }
+  if (ui.touchPointers.size) return;
+  const pinched = ui.touchPinched;
+  ui.touchPinched = false;
+  if (pinched || point.interactive || point.moved || e.type !== 'pointerup') {
+    ui.lastTap = null;
+    return;
+  }
+  handleDoubleTap(e.clientX, e.clientY);
+}
+
+/**
+ * Zooms in on the tapped point when the canvas is double-tapped.
+ */
+function handleDoubleTap(clientX, clientY) {
+  const now = Date.now();
+  const last = ui.lastTap;
+  ui.lastTap = { time: now, x: clientX, y: clientY };
+  if (!last || now - last.time > 320 || Math.hypot(clientX - last.x, clientY - last.y) > 30) return;
+  ui.lastTap = null;
+  const v = getView();
+  // Toggle between a readable 100% and a closer 200% view.
+  const target = v.z < 0.95 ? 1 : v.z < 1.9 ? 2 : 1;
+  zoomAt(clientX, clientY, target / v.z);
+}
+
+/**
  * Starts a shift-drag selection rectangle.
  */
 function startMarquee(e) {
@@ -1553,6 +2776,10 @@ function onMarqueeUp(e) {
  * Pans with the wheel and zooms with Ctrl or Cmd plus the wheel.
  */
 function onWheel(e) {
+  if (e.target.closest && e.target.closest('.task-view')) return;
+  // Let the table grid scroll natively instead of panning the canvas.
+  if (!e.ctrlKey && !e.metaKey && e.target.closest &&
+      e.target.closest('.table-scroll')) return;
   e.preventDefault();
   if (e.ctrlKey || e.metaKey) {
     const factor = Math.exp(-e.deltaY * 0.0016);
@@ -1600,6 +2827,118 @@ function createItem(type, x, y, extra) {
 }
 
 /**
+ * Adds a captured note or link to the current board.
+ */
+function addCapturedCard(type, content) {
+  const size = SIZES[type];
+  const pos = centerWorld(size.w, size.h);
+  pushHistory();
+  const item = createItem(type, pos.x, pos.y, content);
+  currentBoard().items.push(item);
+  ui.selected = new Set([item.id]);
+  ui.selectedConnection = null;
+  saveSoon();
+  renderBoard();
+  renderSidebar();
+  pushHistory();
+  toast(type === 'link' ? 'Link captured' : 'Note captured');
+}
+
+/**
+ * Opens a focused, keyboard-friendly dialog for capturing a note.
+ */
+function openQuickCapture() {
+  function capture(dlg) {
+    const input = $('#quickCaptureInput', dlg || $('#modal'));
+    const text = input.value;
+    if (!text.trim()) {
+      input.classList.add('invalid');
+      input.focus();
+      return;
+    }
+    closeModal();
+    addCapturedCard('note', { text });
+  }
+
+  openModal({
+    title: 'Quick capture',
+    subtitle: 'Save a thought to ' + currentBoard().name + '.',
+    width: 500,
+    body: `
+      <label class="field quick-capture-field">
+        <span>Your thought</span>
+        <textarea class="input quick-capture-input" id="quickCaptureInput" placeholder="Type or paste anything…" rows="5"></textarea>
+      </label>`,
+    footer: [
+      { label: 'Cancel', kind: 'ghost', onClick: closeModal },
+      { label: 'Capture note', kind: 'primary', onClick: capture }
+    ],
+    onMount: dlg => {
+      const input = $('#quickCaptureInput', dlg);
+      input.focus();
+      input.addEventListener('input', () => input.classList.remove('invalid'));
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          capture(dlg);
+        }
+      });
+    }
+  });
+}
+
+/**
+ * Normalizes a pasted URL, including bare domains, to a safe HTTP(S) URL.
+ */
+function normalizePastedUrl(value) {
+  const candidate = value.trim();
+  if (!candidate || /\s/.test(candidate)) return null;
+  let url = candidate;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) {
+    if (!/^(?:www\.)?[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}(?::\d+)?(?:[/?#][^\s]*)?$/i.test(url)) {
+      return null;
+    }
+    url = 'https://' + url;
+  }
+  return safeUrl(url);
+}
+
+/**
+ * Extracts plain text or a single copied hyperlink and creates the matching card.
+ */
+function captureClipboard(data) {
+  let text = data.getData('text/plain') || '';
+  let link = null;
+  const pastedUrl = normalizePastedUrl(text);
+  if (pastedUrl) {
+    link = { url: pastedUrl, title: hostOf(pastedUrl) || pastedUrl };
+  } else {
+    const html = data.getData('text/html');
+    if (html) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const anchors = Array.from(doc.querySelectorAll('a[href]'));
+      if (anchors.length === 1) {
+        const anchorText = (anchors[0].textContent || '').trim();
+        const url = safeUrl(anchors[0].getAttribute('href'));
+        if (url && (!text.trim() || text.trim() === anchorText)) {
+          link = { url, title: anchorText || hostOf(url) || url };
+        }
+      }
+      if (!text.trim()) text = doc.body.textContent || '';
+    }
+  }
+
+  if (link) {
+    addCapturedCard('link', { url: link.url, title: link.title, description: '' });
+  } else if (text.trim()) {
+    addCapturedCard('note', { text });
+  } else {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Adds a note or to-do directly, or opens the right dialog for links, images, and boards.
  */
 function addItem(type) {
@@ -1612,6 +2951,11 @@ function addItem(type) {
     $('#imageInput').click();
     return;
   }
+  if (type === 'file') {
+    ui.filePoint = null;
+    $('#fileInput').click();
+    return;
+  }
   if (type === 'board') {
     openNewBoardModal({ placeCard: true });
     return;
@@ -1622,7 +2966,9 @@ function addItem(type) {
     ? { text: '' }
     : type === 'todo'
       ? { title: '', todos: [{ id: uid('t'), text: '', done: false }] }
-      : {};
+      : type === 'table'
+        ? { table: defaultTable() }
+        : {};
   pushHistory();
   const item = createItem(type, pos.x, pos.y, extra);
   currentBoard().items.push(item);
@@ -1654,6 +3000,17 @@ function deleteSelection() {
   if (!ui.selected.size) return;
   const count = ui.selected.size;
   pushHistory();
+  const removed = board.items.filter(item => ui.selected.has(item.id));
+  removed.forEach(item => {
+    state.trash.push({
+      id: uid('trash'),
+      kind: 'card',
+      deletedAt: Date.now(),
+      boardId: board.id,
+      item: deepClone(item),
+      connections: deepClone(board.connections.filter(conn => conn.from === item.id || conn.to === item.id))
+    });
+  });
   board.items = board.items.filter(item => !ui.selected.has(item.id));
   board.connections = board.connections.filter(c => !ui.selected.has(c.from) && !ui.selected.has(c.to));
   ui.selected.clear();
@@ -1661,7 +3018,99 @@ function deleteSelection() {
   renderBoard();
   renderSidebar();
   pushHistory();
-  toast(count === 1 ? 'Card deleted' : 'Cards deleted');
+  toast(count === 1 ? 'Card moved to Trash' : 'Cards moved to Trash');
+}
+
+function restoreTrashEntry(id) {
+  const index = state.trash.findIndex(entry => entry.id === id);
+  if (index < 0) return;
+  const entry = state.trash[index];
+  const taskBoard = entry.kind === 'task' ? boardById(entry.boardId) : null;
+  const taskCard = taskBoard && taskBoard.items.find(item => item.id === entry.itemId && item.type === 'todo');
+  if (entry.kind === 'task' && !taskCard) {
+    toast('Restore the original board and to-do card first', 'error');
+    return;
+  }
+  if (entry.kind === 'board' && state.boards.some(board => board.id === entry.board.id)) {
+    toast('A board with that ID already exists', 'error');
+    return;
+  }
+  pushHistory();
+  if (entry.kind === 'board') {
+    state.boards.push(entry.board);
+    if (entry.view) state.views[entry.board.id] = entry.view;
+  } else if (entry.kind === 'task') {
+    const todo = deepClone(entry.todo);
+    if (taskCard.todos.some(existing => existing.id === todo.id)) todo.id = uid('t');
+    taskCard.todos.splice(Math.min(entry.index, taskCard.todos.length), 0, todo);
+  } else {
+    const board = boardById(entry.boardId) || currentBoard();
+    const item = deepClone(entry.item);
+    const oldId = item.id;
+    if (board.items.some(existing => existing.id === item.id)) item.id = uid('i');
+    item.z = board.items.reduce((z, existing) => Math.max(z, existing.z || 0), 0) + 1;
+    board.items.push(item);
+    const restoredIds = new Set(board.items.map(existing => existing.id));
+    entry.connections.forEach(conn => {
+      const restored = deepClone(conn);
+      if (restored.from === oldId) restored.from = item.id;
+      if (restored.to === oldId) restored.to = item.id;
+      if (restoredIds.has(restored.from) && restoredIds.has(restored.to) &&
+          !board.connections.some(existing => existing.from === restored.from && existing.to === restored.to)) {
+        board.connections.push(restored);
+      }
+    });
+  }
+  state.trash.splice(index, 1);
+  saveSoon();
+  renderAll();
+  pushHistory();
+  toast('Item restored');
+}
+
+function permanentlyDeleteTrashEntry(id) {
+  const entry = state.trash.find(candidate => candidate.id === id);
+  if (!entry) return;
+  confirmModal('Delete permanently?', 'This cannot be undone.', () => {
+    pushHistory();
+    removeTrashEntry(entry);
+    renderAll();
+    saveSoon();
+    pushHistory();
+    toast('Deleted permanently');
+  }, 'Delete forever');
+}
+
+function removeTrashEntry(entry) {
+  if (entry.kind === 'card') {
+    forgetFileUrl(entry.item.id);
+  } else if (entry.kind === 'board') {
+    const removedIds = new Set(entry.board.items.map(item => item.id));
+    entry.board.items.forEach(item => {
+      if (item.type === 'file') forgetFileUrl(item.id);
+    });
+    state.boards.forEach(board => {
+      board.items = board.items.filter(item => !(item.type === 'board' && item.boardId === entry.board.id));
+      board.connections = board.connections.filter(conn =>
+        !removedIds.has(conn.from) && !removedIds.has(conn.to) &&
+        board.items.some(item => item.id === conn.from) && board.items.some(item => item.id === conn.to)
+      );
+    });
+    delete state.views[entry.board.id];
+  }
+  state.trash = state.trash.filter(candidate => candidate.id !== entry.id);
+}
+
+function emptyTrash() {
+  confirmModal('Empty Trash?', 'All deleted cards and boards will be permanently removed.', () => {
+    pushHistory();
+    state.trash.slice().forEach(removeTrashEntry);
+    state.trash = [];
+    saveSoon();
+    renderAll();
+    pushHistory();
+    toast('Trash emptied');
+  }, 'Empty Trash');
 }
 
 /**
@@ -1685,6 +3134,10 @@ function duplicateSelection() {
     if (copy.type === 'todo') {
       copy.todos.forEach(todo => { todo.id = uid('t'); });
     }
+    if (copy.type === 'table' && copy.table) {
+      copy.table.cols.forEach(col => { col.id = uid('col'); });
+      copy.table.rows.forEach(row => { row.id = uid('row'); });
+    }
     idMap.set(source.id, copy.id);
     board.items.push(copy);
     clones.push(copy.id);
@@ -1702,6 +3155,88 @@ function duplicateSelection() {
   renderSidebar();
   pushHistory();
   toast(clones.length === 1 ? 'Card duplicated' : 'Cards duplicated');
+}
+
+function openTransferModal(mode, item) {
+  const source = currentBoard();
+  const selectedIds = ui.selected.has(item.id) ? Array.from(ui.selected) : [item.id];
+  const targets = state.boards.filter(board => board.id !== source.id);
+  if (!targets.length) {
+    toast('Create another board first');
+    return;
+  }
+  const dlg = openModal({
+    title: mode === 'move' ? 'Move to board' : 'Copy to board',
+    subtitle: selectedIds.length === 1
+      ? 'Choose where to ' + mode + ' this card.'
+      : 'Choose where to ' + mode + ' these ' + selectedIds.length + ' cards.',
+    body: '<label class="field"><span>Destination board</span><select class="input" id="transferBoardSelect"></select></label>',
+    footer: [
+      { label: 'Cancel', kind: 'ghost', onClick: closeModal },
+      { label: mode === 'move' ? 'Move cards' : 'Copy cards', kind: 'primary', onClick: transfer }
+    ],
+    onMount: root => {
+      const select = $('#transferBoardSelect', root);
+      targets.forEach(board => {
+        const option = document.createElement('option');
+        option.value = board.id;
+        option.textContent = board.emoji + ' ' + board.name;
+        select.append(option);
+      });
+      select.focus();
+    }
+  });
+
+  function transfer() {
+    const target = boardById($('#transferBoardSelect', dlg).value);
+    if (!target || target.id === source.id) return;
+    const moving = source.items.filter(candidate => selectedIds.includes(candidate.id));
+    if (!moving.length) { closeModal(); return; }
+    pushHistory();
+    const idMap = new Map();
+    let z = target.items.reduce((max, candidate) => Math.max(max, candidate.z || 0), 0);
+    const copies = moving.map(original => {
+      const copy = mode === 'move' ? original : deepClone(original);
+      if (mode === 'copy') {
+        copy.id = uid('i');
+        if (copy.type === 'todo') copy.todos.forEach(todo => { todo.id = uid('t'); });
+        if (copy.type === 'table' && copy.table) {
+          copy.table.cols.forEach(col => { col.id = uid('col'); });
+          copy.table.rows.forEach(row => { row.id = uid('row'); });
+        }
+        copy.x += 26;
+        copy.y += 26;
+      }
+      copy.z = ++z;
+      idMap.set(original.id, copy.id);
+      return copy;
+    });
+    const selected = new Set(moving.map(candidate => candidate.id));
+    const internalConnections = source.connections.filter(conn =>
+      selected.has(conn.from) && selected.has(conn.to)
+    );
+    if (mode === 'move') {
+      source.items = source.items.filter(candidate => !selected.has(candidate.id));
+      source.connections = source.connections.filter(conn =>
+        !selected.has(conn.from) && !selected.has(conn.to)
+      );
+    }
+    target.items.push(...copies);
+    internalConnections.forEach(conn => {
+      const from = idMap.get(conn.from);
+      const to = idMap.get(conn.to);
+      if (from && to) target.connections.push({ id: uid('c'), from, to });
+    });
+    ui.selected.clear();
+    ui.selectedConnection = null;
+    closeModal();
+    saveSoon();
+    openBoard(target.id);
+    ui.selected = new Set(copies.map(copy => copy.id));
+    renderAll();
+    pushHistory();
+    toast(mode === 'move' ? 'Cards moved' : 'Cards copied');
+  }
 }
 
 /**
@@ -1902,13 +3437,80 @@ async function handleImageFiles(files, point) {
   }
 }
 
+/**
+ * Adds one or more PDF or MP4 files as cards at an optional world point.
+ */
+async function handleFileFiles(files, point) {
+  const valid = Array.from(files).filter(isSupportedFile);
+  if (!valid.length) {
+    toast('Only PDF and MP4 files can be added here', 'error');
+    return;
+  }
+  const usable = valid.filter(file => file.size <= MAX_FILE_BYTES);
+  const tooBig = valid.filter(file => file.size > MAX_FILE_BYTES);
+  if (tooBig.length) {
+    toast(
+      tooBig[0].name + ' is too large. Files live in this browser, so the limit is ' +
+      formatBytes(MAX_FILE_BYTES) + '.',
+      'error'
+    );
+  }
+  if (!usable.length) return;
+  toast(usable.length > 1 ? 'Adding ' + usable.length + ' files…' : 'Adding file…');
+  const board = currentBoard();
+  let offset = 0;
+  for (const file of usable) {
+    try {
+      const data = await readFileAsDataURL(file);
+      const w = SIZES.file.w;
+      const h = SIZES.file.h;
+      const base = point
+        ? { x: point.x - w / 2, y: point.y - h / 2 }
+        : centerWorld(w, h);
+      pushHistory();
+      const item = createItem('file', base.x + offset, base.y + offset, {
+        w,
+        h,
+        file: {
+          name: file.name || 'File',
+          mime: file.type || '',
+          size: file.size || 0,
+          data
+        }
+      });
+      board.items.push(item);
+      ui.selected = new Set([item.id]);
+      ui.selectedConnection = null;
+      // Saving immediately lets us roll back when the file does not fit.
+      if (!saveNow()) {
+        board.items = board.items.filter(other => other.id !== item.id);
+        ui.selected.clear();
+        renderBoard();
+        renderSidebar();
+        toast(file.name + ' did not fit in local storage. Try a smaller file.', 'error');
+        continue;
+      }
+      renderBoard();
+      renderSidebar();
+      pushHistory();
+      offset += 26;
+    } catch (err) {
+      console.error('File failed', err);
+      toast('Could not add that file', 'error');
+    }
+  }
+}
+
 /* ---------------- search palette ---------------- */
 
 /**
  * Returns the human-readable label for a card type.
  */
 function typeLabel(type) {
-  return { note: 'Note', todo: 'To-do', link: 'Link', image: 'Image', board: 'Board' }[type] || 'Card';
+  return {
+    note: 'Note', todo: 'To-do', link: 'Link', image: 'Image',
+    board: 'Board', table: 'Table', file: 'File'
+  }[type] || 'Card';
 }
 
 /**
@@ -1919,6 +3521,12 @@ function itemSearchText(item) {
   if (item.type === 'todo') return [item.title || ''].concat((item.todos || []).map(t => t.text)).join(' ');
   if (item.type === 'link') return [item.title, item.description, item.url].join(' ');
   if (item.type === 'image') return item.caption || '';
+  if (item.type === 'table' && item.table) {
+    const labels = item.table.cols.map(col => col.label);
+    const cells = item.table.rows.reduce((all, row) => all.concat(row.cells), []);
+    return labels.concat(cells).join(' ');
+  }
+  if (item.type === 'file') return item.file ? item.file.name : '';
   if (item.type === 'board') {
     const target = boardById(item.boardId);
     return target ? target.name : '';
@@ -2143,17 +3751,22 @@ function openPalette() {
  */
 function openHelp() {
   const rows = [
+    ['Open Today / Overdue / Trash', 'Sidebar'],
+    ['Quick capture', '⌘⇧Space'],
     ['Add a note', 'N'],
     ['Add a to-do', 'T'],
     ['Add an image', 'I'],
     ['Add a link', 'L'],
     ['Add a board', 'B'],
+    ['Add a table', 'G'],
+    ['Add a PDF or MP4', 'F'],
     ['Search everything', '⌘K'],
     ['Undo / redo', '⌘Z / ⇧⌘Z'],
     ['Duplicate card', '⌘D'],
     ['Delete selection', 'Del'],
     ['Fit to content', '⌘0'],
     ['Zoom in / out', '⌘+ / ⌘−'],
+    ['Zoom on touch', 'Pinch / double-tap'],
     ['Pan the canvas', 'Space + drag'],
     ['Multi-select', 'Shift + drag'],
     ['Edit a card', 'Click it'],
@@ -2169,6 +3782,157 @@ function openHelp() {
         <span class="shortcut-keys">${keys.split(' / ').map(k => k.split(' + ').map(part => `<kbd class="kbd">${part}</kbd>`).join('')).join(' <span style="opacity:.4">/</span> ')}</span>
       </div>`).join('')}</div>`,
     footer: [{ label: 'Got it', kind: 'primary', onClick: closeModal }]
+  });
+}
+
+/* ---------------- appearance ---------------- */
+
+/**
+ * Opens the Themes dialog with Styles and Fonts tabs.
+ */
+function openThemesModal() {
+  const themes = [
+    { id: 'light', name: 'Light' },
+    { id: 'dark', name: 'Dark' }
+  ];
+  const c = state.customTheme || DEFAULT_CUSTOM_THEME;
+  const body = `
+    <div class="theme-tabs" role="tablist" aria-label="Appearance">
+      <button class="theme-tab" type="button" role="tab" data-tab="styles" aria-selected="true">Styles</button>
+      <button class="theme-tab" type="button" role="tab" data-tab="fonts" aria-selected="false">Fonts</button>
+    </div>
+    <div class="theme-panel" data-panel="styles" role="tabpanel">
+      <p class="theme-note">Pick a look for your workspace.</p>
+      <div class="style-grid">
+        ${themes.map(t => `
+          <button class="style-option" type="button" data-theme-choice="${t.id}" aria-pressed="false">
+            <span class="style-swatch style-swatch-${t.id}" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="style-name">${t.name}</span>
+            <span class="style-check" aria-hidden="true">${icon('check', 15)}</span>
+          </button>`).join('')}
+      </div>
+      <button class="style-option style-option-wide" type="button" data-theme-choice="custom" aria-pressed="false">
+        <span class="custom-stripes" aria-hidden="true">
+          <i data-stripe="bg"></i><i data-stripe="surface"></i><i data-stripe="text"></i><i data-stripe="accent"></i>
+        </span>
+        <span class="style-name">Custom</span>
+        <span class="style-check" aria-hidden="true">${icon('check', 15)}</span>
+      </button>
+      <div class="custom-editor" hidden>
+        <div class="custom-editor-head">
+          <span>Custom colors</span>
+          <button class="custom-reset" type="button">Reset</button>
+        </div>
+        <div class="custom-grid">
+          ${[
+            ['bg', 'Background'],
+            ['accent', 'Accent']
+          ].map(([key, label]) => `
+            <label class="custom-field">
+              <span>${label}</span>
+              <input type="color" data-custom="${key}" value="${c[key]}" aria-label="${label} color">
+            </label>`).join('')}
+        </div>
+        <p class="field-hint custom-hint">Panels and text adjust automatically for readability.</p>
+      </div>
+    </div>
+    <div class="theme-panel" data-panel="fonts" role="tabpanel" hidden>
+      <p class="theme-note">Choose the typeface used across the app.</p>
+      <div class="font-list">
+        ${FONTS.map(f => `
+          <button class="font-option" type="button" data-font-choice="${f.id}" aria-pressed="false">
+            <span class="font-sample font-sample-${f.id}" aria-hidden="true">Aa</span>
+            <span class="font-meta">
+              <span class="font-name">${f.name}</span>
+              <span class="font-desc">${f.desc}</span>
+            </span>
+            <span class="font-check" aria-hidden="true">${icon('check', 15)}</span>
+          </button>`).join('')}
+      </div>
+    </div>`;
+  openModal({
+    title: 'Themes',
+    subtitle: 'Make UberNotes feel like yours.',
+    width: 480,
+    body,
+    footer: [{ label: 'Done', kind: 'primary', onClick: closeModal }],
+    onMount: dlg => {
+      const editor = $('.custom-editor', dlg);
+      const colorInputs = $$('[data-custom]', dlg);
+      // Paints the Custom row's color stripes from the current palette.
+      const paintStripes = () => {
+        const palette = state.customTheme || DEFAULT_CUSTOM_THEME;
+        const derived = customPalette(palette);
+        const colors = {
+          bg: palette.bg,
+          surface: derived.surface,
+          text: derived.text,
+          accent: palette.accent
+        };
+        $$('[data-stripe]', dlg).forEach(stripe => {
+          stripe.style.background = colors[stripe.dataset.stripe];
+        });
+      };
+      // Marks the active theme and font choices, and reveals the editor.
+      const sync = () => {
+        $$('.style-option', dlg).forEach(btn => {
+          const on = btn.dataset.themeChoice === state.theme;
+          btn.classList.toggle('is-selected', on);
+          btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        $$('.font-option', dlg).forEach(btn => {
+          const on = btn.dataset.fontChoice === (state.font || 'sans');
+          btn.classList.toggle('is-selected', on);
+          btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        editor.hidden = state.theme !== 'custom';
+        paintStripes();
+      };
+      // Shows one tab panel and hides the other.
+      const showTab = name => {
+        $$('.theme-tab', dlg).forEach(tab => {
+          const on = tab.dataset.tab === name;
+          tab.classList.toggle('is-active', on);
+          tab.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        $$('.theme-panel', dlg).forEach(panel => {
+          panel.hidden = panel.dataset.panel !== name;
+        });
+      };
+      $$('.theme-tab', dlg).forEach(tab => {
+        tab.addEventListener('click', () => showTab(tab.dataset.tab));
+      });
+      $$('.style-option', dlg).forEach(btn => {
+        btn.addEventListener('click', () => { setTheme(btn.dataset.themeChoice); sync(); });
+      });
+      $$('.font-option', dlg).forEach(btn => {
+        btn.addEventListener('click', () => { setFont(btn.dataset.fontChoice); sync(); });
+      });
+      // Editing any color applies it live and switches to the custom theme.
+      colorInputs.forEach(input => {
+        input.addEventListener('input', () => {
+          state.customTheme = {
+            ...(state.customTheme || DEFAULT_CUSTOM_THEME),
+            [input.dataset.custom]: input.value
+          };
+          state.theme = 'custom';
+          applyTheme();
+          saveSoon();
+          sync();
+        });
+      });
+      // Restores the starting palette.
+      $('.custom-reset', dlg).addEventListener('click', () => {
+        state.customTheme = { ...DEFAULT_CUSTOM_THEME };
+        state.theme = 'custom';
+        colorInputs.forEach(input => { input.value = state.customTheme[input.dataset.custom]; });
+        applyTheme();
+        saveSoon();
+        sync();
+      });
+      showTab('styles');
+      sync();
+    }
   });
 }
 
@@ -2218,6 +3982,7 @@ function importBackup(file) {
         const search = $('#boardSearch');
         if (search) search.value = '';
         applyTheme();
+        applyFont();
         saveNow();
         renderAll();
         fitView();
@@ -2256,6 +4021,7 @@ function toast(message, kind) {
  * Handles background clicks: pan, marquee, connect-cancel, and deselect.
  */
 function onCanvasPointerDown(e) {
+  if (ui.pinch || ui.touchPointers.size > 1) return;
   if (e.button !== 0 && e.button !== 1) return;
   const target = e.target;
   if (target.closest('.toolbar, .zoombar, .canvas-hint, .empty-state')) return;
@@ -2289,6 +4055,11 @@ function onKeyDown(e) {
   if ($('#modal') && $('#modal').open) return;
 
   const mod = e.ctrlKey || e.metaKey;
+  if (mod && e.shiftKey && e.code === 'Space') {
+    e.preventDefault();
+    openQuickCapture();
+    return;
+  }
   if (mod && e.key.toLowerCase() === 'k') {
     e.preventDefault();
     openPalette();
@@ -2363,6 +4134,8 @@ function onKeyDown(e) {
     else if (key === 'i') { e.preventDefault(); addItem('image'); }
     else if (key === 'l') { e.preventDefault(); addItem('link'); }
     else if (key === 'b') { e.preventDefault(); addItem('board'); }
+    else if (key === 'g') { e.preventDefault(); addItem('table'); }
+    else if (key === 'f') { e.preventDefault(); addItem('file'); }
   }
 }
 
@@ -2381,12 +4154,18 @@ function onKeyUp(e) {
  */
 function onPaste(e) {
   if (isTypingTarget(document.activeElement)) return;
-  const files = Array.from((e.clipboardData && e.clipboardData.files) || [])
-    .filter(file => file.type.startsWith('image/'));
-  if (files.length) {
+  const data = e.clipboardData;
+  if (!data) return;
+  const files = Array.from(data.files || []);
+  const images = files.filter(file => file.type.startsWith('image/'));
+  const documents = files.filter(isSupportedFile);
+  if (images.length || documents.length) {
     e.preventDefault();
-    handleImageFiles(files);
+    if (images.length) handleImageFiles(images);
+    if (documents.length) handleFileFiles(documents);
+    return;
   }
+  if (captureClipboard(data)) e.preventDefault();
 }
 
 /**
@@ -2401,7 +4180,7 @@ function bindEvents() {
     ui.boardFilter = e.target.value;
     renderSidebar();
   });
-  $('#themeBtn').addEventListener('click', toggleTheme);
+  $('#themeBtn').addEventListener('click', openThemesModal);
   $('#helpBtn').addEventListener('click', openHelp);
   $('#exportBtn').addEventListener('click', exportBackup);
   $('#importBtn').addEventListener('click', () => $('#importInput').click());
@@ -2418,11 +4197,21 @@ function bindEvents() {
     }
     e.target.value = '';
   });
+  $('#fileInput').addEventListener('change', e => {
+    const files = e.target.files;
+    if (files && files.length) {
+      ui.filePoint = null;
+      handleFileFiles(files);
+    }
+    e.target.value = '';
+  });
 
   $('#backBtn').addEventListener('click', goBack);
+  $('#quickCaptureBtn').addEventListener('click', openQuickCapture);
   // Right-clicking the board name opens the board options menu; left-click
   // still focuses the field for inline renaming.
   $('#boardTitle').addEventListener('contextmenu', e => {
+    if (ui.specialView) return;
     e.preventDefault();
     openBoardMenu(e.clientX, e.clientY);
   });
@@ -2477,6 +4266,16 @@ function bindEvents() {
 
   const wrap = $('#canvasWrap');
   wrap.addEventListener('pointerdown', onCanvasPointerDown);
+  // Touch gestures run in the capture phase so two fingers always win over
+  // a card drag or a canvas pan that the first finger started.
+  wrap.addEventListener('pointerdown', onTouchPointerDown, { capture: true });
+  window.addEventListener('pointermove', onTouchPointerMove, { capture: true, passive: false });
+  window.addEventListener('pointerup', onTouchPointerUp, { capture: true });
+  window.addEventListener('pointercancel', onTouchPointerUp, { capture: true });
+  window.addEventListener('blur', resetTouchState);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) resetTouchState();
+  });
   wrap.addEventListener('wheel', onWheel, { passive: false });
   wrap.addEventListener('dragover', e => {
     if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
@@ -2487,11 +4286,23 @@ function bindEvents() {
   wrap.addEventListener('drop', e => {
     const files = e.dataTransfer && e.dataTransfer.files;
     if (!files || !files.length) return;
-    const images = Array.from(files).filter(file => file.type.startsWith('image/'));
-    if (!images.length) return;
     e.preventDefault();
-    ui.imagePoint = screenToWorld(e.clientX, e.clientY);
-    handleImageFiles(images, ui.imagePoint);
+    const list = Array.from(files);
+    const images = list.filter(file => file.type.startsWith('image/'));
+    const docs = list.filter(isSupportedFile);
+    if (!images.length && !docs.length) {
+      toast('Only images, PDFs, and MP4 files can be dropped here', 'error');
+      return;
+    }
+    const point = screenToWorld(e.clientX, e.clientY);
+    if (images.length) {
+      ui.imagePoint = point;
+      handleImageFiles(images, point);
+    }
+    if (docs.length) {
+      ui.filePoint = point;
+      handleFileFiles(docs, point);
+    }
   });
 
   document.addEventListener('click', e => {
@@ -2524,6 +4335,10 @@ function init() {
     el.innerHTML = icon(el.dataset.icon, 18);
   });
   applyTheme();
+  applyFont();
+  window.addEventListener('pagehide', e => {
+    if (!e.persisted) releaseFileUrls();
+  });
   try {
     if (localStorage.getItem(SIDEBAR_KEY) === '1') {
       document.body.classList.add('sidebar-collapsed');
@@ -2651,12 +4466,42 @@ function openItemMenu(item, x, y) {
       openBoard(item.boardId);
     });
   }
+  if (item.type === 'file' && item.file) {
+    addMenuAction(menu, 'external', 'Open file', () => {
+      closeMenu();
+      const url = fileObjectUrl(item);
+      if (url) window.open(url, '_blank');
+      else toast('Could not open this file', 'error');
+    });
+    addMenuAction(menu, 'download', 'Download file', () => {
+      closeMenu();
+      const url = fileObjectUrl(item);
+      if (!url) {
+        toast('Could not download this file', 'error');
+        return;
+      }
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = item.file.name || 'file';
+      document.body.append(link);
+      link.click();
+      link.remove();
+    });
+  }
   addMenuAction(menu, 'copy', 'Duplicate', () => {
     closeMenu();
     ui.selected = new Set([item.id]);
     ui.selectedConnection = null;
     duplicateSelection();
   }, { shortcut: '⌘D' });
+  addMenuAction(menu, 'external', 'Move to board…', () => {
+    closeMenu();
+    openTransferModal('move', item);
+  });
+  addMenuAction(menu, 'copy', 'Copy to board…', () => {
+    closeMenu();
+    openTransferModal('copy', item);
+  });
   addMenuAction(menu, 'front', 'Bring to front', () => {
     closeMenu();
     bringToFront(item);
@@ -2991,7 +4836,7 @@ function duplicateBoard(board) {
 }
 
 /**
- * Deletes a board after confirmation and cleans up references.
+ * Moves a board to Trash after confirmation.
  */
 function deleteBoard(board) {
   if (state.boards.length <= 1) {
@@ -3000,17 +4845,17 @@ function deleteBoard(board) {
   }
   confirmModal(
     'Delete “' + board.name + '”?',
-    'The board and all its cards will be removed. You can undo this with Ctrl+Z.',
+    'The board and its cards will move to Trash, where you can restore them.',
     () => {
       pushHistory();
-      state.boards = state.boards.filter(b => b.id !== board.id);
-      state.boards.forEach(other => {
-        other.items = other.items.filter(item => !(item.type === 'board' && item.boardId === board.id));
-        other.connections = other.connections.filter(c =>
-          other.items.some(i => i.id === c.from) && other.items.some(i => i.id === c.to)
-        );
+      state.trash.push({
+        id: uid('trash'),
+        kind: 'board',
+        deletedAt: Date.now(),
+        board: deepClone(board),
+        view: state.views[board.id] ? deepClone(state.views[board.id]) : null
       });
-      delete state.views[board.id];
+      state.boards = state.boards.filter(b => b.id !== board.id);
       navStack = navStack.filter(id => id !== board.id);
       if (state.activeBoardId === board.id) {
         state.activeBoardId = state.boards[0].id;
@@ -3028,10 +4873,7 @@ function deleteBoard(board) {
       }
       updateBack();
       pushHistory();
-      toast('Board deleted');
+      toast('Board moved to Trash');
     }
   );
 }
-
-
-

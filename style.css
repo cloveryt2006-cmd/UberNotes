@@ -4,6 +4,7 @@
 
 /* Design tokens: light palette, spacing, radii, shadows, and card colors. */
 :root {
+  color-scheme: light;
   --bg: #f4f1ea;
   --sidebar: #fbfaf7;
   --surface: #ffffff;
@@ -28,7 +29,9 @@
   --shadow-lg: 0 24px 70px -24px rgba(30, 24, 12, 0.4);
   --radius: 14px;
   --sidebar-w: 268px;
-  --topbar-h: 64px;
+  --topbar-h: 52px;
+  /* Active typeface stack, swapped by the Themes dialog. */
+  --app-font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
   --card-white: #ffffff;
   --card-white-border: #e8e3d9;
   --card-yellow: #fff6cf;
@@ -47,6 +50,7 @@
 
 /* Dark theme overrides for every token used by the light palette. */
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #171614;
   --sidebar: #1d1c19;
   --surface: #24231f;
@@ -85,6 +89,11 @@
   --card-pink-border: #291a21;
 }
 
+/* Typeface presets: each one replaces the app-wide font stack. */
+[data-font="serif"] { --app-font: Georgia, "Iowan Old Style", "Times New Roman", Times, serif; }
+[data-font="rounded"] { --app-font: ui-rounded, "SF Pro Rounded", "Segoe UI Variable Display", Nunito, Quicksand, system-ui, sans-serif; }
+[data-font="mono"] { --app-font: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", monospace; }
+
 /* Global box model: width and height include padding and borders. */
 * { box-sizing: border-box; }
 /* The hidden attribute must beat component display rules. */
@@ -97,7 +106,7 @@ html { scroll-behavior: smooth; }
 /* Base typography, colors, and app-wide overflow lock. */
 body {
   margin: 0;
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--app-font);
   font-size: 14px;
   color: var(--text);
   background: var(--bg);
@@ -223,6 +232,27 @@ body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-w)); }
 .side-search input::placeholder { color: var(--text-3); }
 .side-search input:focus { border-color: var(--accent); background: var(--surface); }
 
+/* Pinned cross-board task and recovery views. */
+.smart-views { display: grid; gap: 2px; padding: 0 8px 8px; }
+.smart-view {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+  font-size: 12.5px;
+}
+.smart-view:hover { background: var(--surface-2); color: var(--text); }
+.smart-view.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.smart-view > span:first-child { display: grid; place-items: center; width: 17px; }
+.smart-view-count { margin-left: auto; color: var(--text-3); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+
 /* Small uppercase section header with the add-board button. */
 .side-section-head {
   display: flex;
@@ -331,7 +361,7 @@ body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-w)); }
 }
 /* Four-column action button grid. */
 .side-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; }
-/* Theme, import, export, and help buttons. */
+/* Themes, import, export, and help buttons. */
 .side-action {
   display: flex;
   flex-direction: column;
@@ -382,8 +412,8 @@ body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-w)); }
   flex: 0 0 var(--topbar-h);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 14px;
+  gap: 6px;
+  padding: 0 12px;
   background: color-mix(in srgb, var(--sidebar) 86%, transparent);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(12px);
@@ -412,6 +442,8 @@ body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-w)); }
 .icon-btn:disabled:hover { background: transparent; color: var(--text-2); transform: none; }
 /* Compact icon button variant. */
 .icon-btn.small { width: 26px; height: 26px; border-radius: 7px; }
+/* Topbar-only sizing: keeps the bar short without shrinking sidebar buttons. */
+.topbar .icon-btn { width: 32px; height: 32px; border-radius: 8px; }
 
 /* Board title block: name row plus card count. */
 .board-heading {
@@ -422,16 +454,16 @@ body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-w)); }
   margin-left: 2px;
 }
 /* Emoji and editable title on one line. */
-.board-title-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
-/* Display-only board icon; fixed 30px box prevents glyph overlap. */
+.board-title-row { display: flex; align-items: center; gap: 5px; min-width: 0; }
+/* Display-only board icon; fixed 24px box prevents glyph overlap. */
 .board-title-row .board-emoji {
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   display: grid;
   place-items: center;
   border: 0;
   background: transparent;
-  font-size: 19px;
+  font-size: 16px;
   line-height: 1;
   padding: 0;
   border-radius: 7px;
@@ -443,13 +475,13 @@ body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-w)); }
 .board-title {
   border: 0;
   background: transparent;
-  font-size: 15.5px;
+  font-size: 14.5px;
   font-weight: 650;
   letter-spacing: -0.01em;
-  padding: 3px 5px;
+  padding: 2px 4px;
   border-radius: 6px;
   outline: none;
-  width: 230px;
+  width: 190px;
   max-width: 34vw;
   min-width: 0;
   flex: 0 1 auto;
@@ -461,31 +493,31 @@ body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-w)); }
 .board-title:focus { background: var(--surface); box-shadow: 0 0 0 2px var(--accent-ring); }
 /* Card count under the board name. */
 .board-meta {
-  font-size: 10.5px;
+  font-size: 10px;
   color: var(--text-3);
-  padding-left: 37px;
-  margin-top: -1px;
+  padding-left: 29px;
+  margin-top: -2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 /* Right-aligned search and history controls. */
-.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 3px; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 2px; }
 /* Vertical separator in the topbar. */
-.top-divider { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+.top-divider { width: 1px; height: 16px; background: var(--border); margin: 0 3px; }
 /* Search button with its keyboard shortcut hint. */
 .search-btn {
   display: flex;
   align-items: center;
-  gap: 7px;
-  height: 32px;
-  padding: 0 8px 0 10px;
+  gap: 6px;
+  height: 27px;
+  padding: 0 7px 0 9px;
   border: 1px solid var(--border);
   background: var(--surface);
-  border-radius: 9px;
+  border-radius: 8px;
   color: var(--text-3);
-  font-size: 12.5px;
+  font-size: 12px;
   transition: border-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease;
 }
 /* Search button hover state. */
@@ -498,11 +530,11 @@ body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-w)); }
 /* Keyboard shortcut badge inside the search button. */
 .search-btn kbd {
   font-family: inherit;
-  font-size: 10px;
+  font-size: 9.5px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 5px;
-  padding: 2px 5px;
+  padding: 1px 4px;
   color: var(--text-3);
 }
 /* Search text label, hidden on narrow screens. */
@@ -513,7 +545,7 @@ body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-w)); }
   .search-label, .search-btn kbd { display: none; }
   .search-btn { padding: 0 9px; }
   .board-title { width: 140px; max-width: 38vw; }
-  .board-meta { padding-left: 30px; }
+  .board-meta { padding-left: 29px; }
 }
 
 /* ---------- canvas ---------- */
@@ -535,6 +567,7 @@ body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-w)); }
 .canvas-wrap.panning { cursor: grabbing; }
 /* Cursor while space-pan mode is armed. */
 .canvas-wrap.space-pan { cursor: grab; }
+.canvas-wrap.has-task-view { touch-action: pan-y; cursor: auto; }
 
 /* World-space layer transformed by pan and zoom. */
 .canvas {
@@ -650,6 +683,16 @@ body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-w)); }
 }
 /* Separator before the fit button. */
 .zoom-divider { width: 1px; height: 16px; background: var(--border); margin: 0 3px; }
+/* While pinching, keep the canvas cursor steady and text unselectable. */
+body.pinching { user-select: none; -webkit-user-select: none; }
+body.pinching .canvas-wrap { cursor: grabbing; }
+/* Touch devices get larger zoom controls that are easy to tap. */
+@media (pointer: coarse) {
+  .zoombar { gap: 2px; padding: 5px; border-radius: 13px; }
+  .zoom-btn { width: 44px; height: 44px; border-radius: 10px; }
+  .zoom-label { min-width: 58px; height: 44px; font-size: 12px; }
+  .zoom-divider { height: 24px; margin: 0 4px; }
+}
 
 /* Floating bottom toolbar for adding cards. */
 .toolbar {
@@ -891,7 +934,7 @@ body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-w)); }
   transform: translateY(-1px);
 }
 
-/* Bottom-right resize grip. */
+/* Bottom-right resize zone: invisible, but keeps the diagonal resize cursor. */
 .resize-handle {
   position: absolute;
   right: 0;
@@ -900,23 +943,7 @@ body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-w)); }
   height: 18px;
   z-index: 5;
   cursor: nwse-resize;
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-/* Show the resize grip on hover or selection. */
-.card:hover .resize-handle,
-.card.selected .resize-handle { opacity: 1; }
-/* Drawn corner lines for the resize grip. */
-.resize-handle::after {
-  content: "";
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 7px;
-  height: 7px;
-  border-right: 2px solid var(--text-3);
-  border-bottom: 2px solid var(--text-3);
-  border-radius: 0 0 2px 0;
+  background: transparent;
 }
 
 /* Connection mode: cards become targets. */
@@ -979,6 +1006,80 @@ body.connecting .card:hover { border-color: var(--accent); }
   padding: 4px 2px;
   border-radius: 6px;
 }
+.todo-content { flex: 1; min-width: 0; }
+.todo-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 5px; }
+.todo-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 25px;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface) 88%, var(--surface-2));
+  color: var(--text-2);
+  transition: border-color 0.12s, background 0.12s, color 0.12s, box-shadow 0.12s;
+}
+.todo-control:hover,
+.todo-control:focus-within {
+  border-color: var(--accent);
+  background: var(--surface);
+  color: var(--text);
+}
+.todo-control:focus-within { box-shadow: 0 0 0 2px var(--accent-ring); }
+.todo-control-icon { display: inline-flex; flex: 0 0 auto; color: var(--accent); pointer-events: none; }
+.todo-control-label { color: var(--text-3); font-size: 10.5px; font-weight: 550; white-space: nowrap; pointer-events: none; }
+.todo-date-value { display: none; color: var(--text); font-size: 10.5px; font-weight: 550; white-space: nowrap; pointer-events: none; }
+.todo-date-control { width: 94px; }
+.todo-due-date {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0 6px 0 26px;
+  border: 0;
+  border-radius: inherit;
+  outline: 0;
+  background: transparent;
+  color: transparent !important;
+  font-size: 10px;
+  cursor: pointer;
+}
+.todo-due-date.has-value { color: var(--text); }
+.todo-due-date::-webkit-calendar-picker-indicator { opacity: 0.7; cursor: pointer; }
+.todo-due-date:hover::-webkit-calendar-picker-indicator { opacity: 1; }
+.todo-date-control:has(.todo-due-date.has-value) .todo-control-label { display: none; }
+.todo-date-control:has(.todo-due-date.has-value) .todo-date-value { display: inline; }
+.todo-repeat-control { width: 90px; }
+.todo-repeat {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0 13px 0 0;
+  border: 0;
+  outline: 0;
+  appearance: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.todo-repeat-control::after {
+  content: "";
+  position: absolute;
+  right: 7px;
+  top: 9px;
+  width: 5px;
+  height: 5px;
+  border-right: 1px solid var(--text-3);
+  border-bottom: 1px solid var(--text-3);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.todo-repeat:focus,
+.todo-repeat:hover { color: var(--text); }
 /* Subtle row hover background. */
 .todo-row:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
 /* Round-square checkbox. */
@@ -1046,6 +1147,39 @@ body.connecting .card:hover { border-color: var(--accent); }
 }
 /* Add-item hover state. */
 .todo-add:hover { color: var(--text); background: var(--hover); }
+
+/* Cross-board Today, Overdue, and Trash panels. */
+.task-view {
+  position: absolute;
+  z-index: 8;
+  inset: 0;
+  overflow: auto;
+  padding: clamp(16px, 4vw, 36px);
+  touch-action: pan-y;
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+}
+.task-view-list { display: grid; gap: 8px; width: min(100%, 820px); margin: 0 auto; }
+.task-view-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.task-view-body { flex: 1; min-width: 0; }
+.task-view-text { overflow: hidden; color: var(--text); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.task-view-meta { overflow: hidden; margin-top: 3px; color: var(--text-3); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.task-view-due { flex: 0 0 auto; color: var(--text-2); font-size: 11px; }
+.task-view-due.overdue { color: var(--danger); }
+.task-view-open { padding: 6px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text-2); font-size: 11px; }
+.task-view-open:hover { background: var(--surface-2); color: var(--text); }
+.task-view-empty { width: min(100%, 620px); margin: 12vh auto 0; padding: 28px; border: 1px dashed var(--border-strong); border-radius: 14px; color: var(--text-2); text-align: center; line-height: 1.6; }
+.trash-view-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: min(100%, 820px); margin: 0 auto 16px; color: var(--text-3); font-size: 11px; }
+.trash-view-row .btn { flex: 0 0 auto; height: 31px; padding: 0 10px; font-size: 11px; }
 
 /* link */
 /* Link card layout. */
@@ -1179,6 +1313,269 @@ body.connecting .card:hover { border-color: var(--accent); }
 }
 /* Solid tool background over photos. */
 .card-image .card-tools { background: color-mix(in srgb, var(--surface) 88%, transparent); }
+
+/* ---------- table card ---------- */
+
+/* Table card shell follows the card color. */
+.card-table { background: var(--card-bg, var(--surface)); }
+/* Column that holds the grid plus its add controls. */
+.table-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 24px 9px 9px;
+}
+/* Scrollable grid area. */
+.table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface) 74%, transparent);
+  scrollbar-width: thin;
+}
+/* Grid layout with collapsed borders. */
+.table-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.35;
+}
+/* Shared cell borders and minimum widths. */
+.table-grid th,
+.table-grid td {
+  padding: 0;
+  min-width: 62px;
+  vertical-align: top;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+/* Drop the outer right border. */
+.table-grid tr > *:last-child { border-right: 0; }
+/* Sticky header row. */
+.table-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-2);
+}
+/* Editable header and body cells. */
+.table-cell {
+  min-height: 26px;
+  padding: 6px 7px;
+  outline: none;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+/* Header label styling, with room for the delete button. */
+.table-head-cell {
+  padding-right: 18px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--text-2);
+}
+/* Accent ring on the focused cell. */
+.table-cell:focus {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+/* Faded placeholder for an empty column header. */
+.table-cell[data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-3);
+}
+/* Narrow gutter that holds the row delete buttons. */
+.table-grid .table-gutter {
+  width: 22px;
+  min-width: 22px;
+  max-width: 22px;
+  text-align: center;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+/* Column and row delete buttons, hidden until hover. */
+.table-col-del,
+.table-row-del {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+/* Header delete button pinned to the top-right of its column. */
+.table-col-del {
+  position: absolute;
+  top: 4px;
+  right: 3px;
+  width: 16px;
+  height: 16px;
+}
+/* Row delete button centered in the gutter. */
+.table-row-del {
+  width: 17px;
+  height: 17px;
+  margin: 4px auto 0;
+}
+/* Reveal delete buttons on hover. */
+.table-grid thead th:hover .table-col-del,
+.table-grid tbody tr:hover .table-row-del { opacity: 1; }
+/* Danger hover for both delete buttons. */
+.table-col-del:hover,
+.table-row-del:hover { background: var(--hover); color: var(--danger); }
+/* Totals row under the data. */
+.table-grid tfoot td {
+  padding: 5px 7px;
+  border-bottom: 0;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+/* Add-row and add-column controls. */
+.table-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+/* Small ghost buttons under the grid. */
+.table-add {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+/* Hover state for the add controls. */
+.table-add:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+/* Quiet helper text about automatic totals. */
+.table-hint {
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 10px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---------- file card ---------- */
+
+/* File card shell. */
+.card-file { background: var(--surface); }
+/* Preview plus metadata layout. */
+.file-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px 10px 10px;
+}
+/* Rounded preview stage for the PDF or video. */
+.file-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+/* PDF frame and video fill the stage. */
+.file-stage iframe,
+.file-stage video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #111;
+}
+/* Keep the whole video visible without cropping. */
+.file-stage video { object-fit: contain; }
+/* Centered fallback when a preview cannot be shown. */
+.file-stage-empty { display: grid; place-items: center; }
+.file-missing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+/* Filename row under the preview. */
+.file-meta {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* PDF or MP4 type badge. */
+.file-badge {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+/* Accent badge for videos. */
+.file-badge.is-video { background: var(--accent-soft); color: var(--accent); }
+/* Name and size stack. */
+.file-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.file-name {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.file-size { color: var(--text-3); font-size: 10px; }
+/* Open-in-new-tab action. */
+.file-open {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.file-open:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
 
 /* ---------- buttons ---------- */
 
@@ -1357,6 +1754,242 @@ dialog::backdrop {
 /* Right-aligned modal action row. */
 .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 
+/* ---------- themes dialog ---------- */
+
+/* Styles / Fonts tab bar. */
+.theme-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+/* Individual tab button. */
+.theme-tab {
+  flex: 1;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+/* Hover feedback for inactive tabs. */
+.theme-tab:hover { color: var(--text); }
+/* Raised look for the selected tab. */
+.theme-tab.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+/* Helper line above each panel's choices. */
+.theme-note { margin: 14px 0 9px; font-size: 11.5px; color: var(--text-3); }
+
+/* Two-column grid of theme previews. */
+.style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* Selectable theme card. */
+.style-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: left;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+/* Hover and selected states for a theme card. */
+.style-option:hover { border-color: var(--border-strong); }
+.style-option.is-selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-ring); }
+/* Miniature window preview inside a theme card. */
+.style-swatch {
+  display: flex;
+  gap: 4px;
+  height: 58px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+/* Bars that stand in for the sidebar and cards. */
+.style-swatch i { display: block; border-radius: 3px; }
+.style-swatch i:nth-child(1) { width: 24%; }
+.style-swatch i:nth-child(2) { flex: 1; }
+.style-swatch i:nth-child(3) { width: 18%; }
+/* Light preview palette. */
+.style-swatch-light { background: #f7f5ef; }
+.style-swatch-light i { background: #e3dfd4; }
+.style-swatch-light i:nth-child(2) { background: #ffffff; border: 1px solid #e8e3d9; }
+/* Dark preview palette. */
+.style-swatch-dark { background: #17161d; border-color: #2c2a36; }
+.style-swatch-dark i { background: #2a2833; }
+.style-swatch-dark i:nth-child(2) { background: #1f1e27; border: 1px solid #302e3a; }
+/* Theme name under its preview. */
+.style-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
+/* Round checkmark badge on the selected theme card. */
+.style-check {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.12s, transform 0.12s;
+}
+/* Reveal the badge only on the active theme. */
+.style-option.is-selected .style-check { opacity: 1; transform: none; }
+
+/* Full-width Custom row under the Light and Dark cards. */
+.style-option-wide {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+/* Four-color preview stripes for the custom palette. */
+.custom-stripes {
+  flex: 0 0 auto;
+  display: flex;
+  width: 64px;
+  height: 34px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.custom-stripes i { flex: 1; }
+/* Custom color editor, revealed only when Custom is selected. */
+.custom-editor {
+  margin-top: 12px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+/* Editor title and reset action. */
+.custom-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+/* Quiet reset button. */
+.custom-reset {
+  padding: 2px 5px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+}
+.custom-reset:hover { background: var(--hover); color: var(--text); }
+/* Two-column grid of color pickers. */
+.custom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* One labeled color swatch row. */
+.custom-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.custom-field:hover { border-color: var(--border-strong); }
+.custom-field > span:first-child { flex: 1; }
+/* Native color input styled as a small swatch. */
+.custom-field input[type="color"] {
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.custom-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.custom-field input[type="color"]::-webkit-color-swatch {
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+.custom-field input[type="color"]::-moz-color-swatch {
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+/* Helper line inside the custom editor. */
+.custom-hint { margin: 9px 0 0; }
+
+/* Vertical list of font presets. */
+.font-list { display: flex; flex-direction: column; gap: 7px; }
+/* Selectable font row. */
+.font-option {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  text-align: left;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+/* Hover and selected states for a font row. */
+.font-option:hover { border-color: var(--border-strong); }
+.font-option.is-selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-ring); }
+/* Large "Aa" preview tile set in each candidate typeface. */
+.font-sample {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 19px;
+  line-height: 1;
+}
+/* One preview stack per preset so the sample matches the real choice. */
+.font-sample-sans { font-family: ui-sans-serif, -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif; }
+.font-sample-serif { font-family: Georgia, "Times New Roman", serif; }
+.font-sample-rounded { font-family: ui-rounded, "Segoe UI Variable Display", Nunito, Quicksand, system-ui, sans-serif; }
+.font-sample-mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+/* Font name and description stack. */
+.font-meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.font-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.font-desc { font-size: 11px; color: var(--text-3); }
+/* Round checkmark badge on the selected font row. */
+.font-check {
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.12s, transform 0.12s;
+}
+/* Reveal the badge only on the active font. */
+.font-option.is-selected .font-check { opacity: 1; transform: none; }
+
 /* Form field label and input stack. */
 .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 13px; }
 /* Remove extra spacing from the last field. */
@@ -1383,6 +2016,13 @@ dialog::backdrop {
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 /* Invalid input state. */
 .input.invalid { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+.quick-capture-input {
+  height: auto;
+  min-height: 132px;
+  padding: 10px 11px;
+  resize: vertical;
+  line-height: 1.5;
+}
 
 /* Emoji preview plus free-form emoji input. */
 .emoji-input-row { display: flex; align-items: center; gap: 8px; }
@@ -1580,8 +2220,8 @@ dialog::backdrop {
   body.sidebar-open .sidebar-backdrop { opacity: 1; pointer-events: auto; }
   .side-close { display: grid !important; }
   .canvas-hint { display: none; }
-  .toolbar { bottom: 14px; }
-  .zoombar { bottom: 76px; right: 12px; }
+  .toolbar { bottom: calc(14px + env(safe-area-inset-bottom)); }
+  .zoombar { bottom: calc(76px + env(safe-area-inset-bottom)); right: calc(12px + env(safe-area-inset-right)); }
   .topbar { padding: 0 8px; gap: 3px; }
   .board-title { max-width: 30vw; }
 }
@@ -1591,13 +2231,18 @@ dialog::backdrop {
   .tool span:last-child { display: none; }
   .tool { min-width: 44px; height: 42px; }
   .toolbar { padding: 4px; border-radius: 13px; }
-  .zoombar { bottom: 68px; }
+  .zoombar { bottom: calc(68px + env(safe-area-inset-bottom)); }
   .board-meta { display: none; }
   .top-divider { display: none; }
   #backBtn { display: none; }
   .modal-card { padding: 17px; }
   .shortcut-grid { grid-template-columns: 1fr; }
   .shortcut-row:nth-last-child(2) { border-bottom: 1px solid var(--border); }
+  .task-view { padding: 14px; }
+  .task-view-row { gap: 8px; padding: 10px; }
+  .task-view-due { display: none; }
+  .trash-view-row { flex-wrap: wrap; }
+  .trash-view-row .task-view-body { flex-basis: 100%; }
 }
 
 /* Respect the user's reduced-motion preference. */

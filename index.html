@@ -13,7 +13,21 @@
 <script>
   try {
     var saved = JSON.parse(localStorage.getItem('ubernotes.v1') || 'null');
-    if (saved && saved.theme === 'dark') document.documentElement.dataset.theme = 'dark';
+    if (saved) {
+      var root = document.documentElement;
+      if (saved.theme === 'custom' && saved.customTheme) {
+        var c = saved.customTheme;
+        if (c.bg) root.style.setProperty('--bg', c.bg);
+        if (c.accent) root.style.setProperty('--accent', c.accent);
+        var h = String(c.bg || '').replace('#', '');
+        if (h.length === 3) h = h.split('').map(function (x) { return x + x; }).join('');
+        var r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+        if ((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5) root.dataset.theme = 'dark';
+      } else if (saved.theme === 'dark') {
+        root.dataset.theme = 'dark';
+      }
+      if (saved.font) root.dataset.font = saved.font;
+    }
   } catch (e) {}
 </script>
 </head>
@@ -33,6 +47,12 @@
       <input id="boardSearch" type="search" placeholder="Find a board…" autocomplete="off" aria-label="Find a board">
     </div>
 
+    <nav class="smart-views" aria-label="Task views">
+      <button class="smart-view" type="button" data-view="today"><span aria-hidden="true">☀️</span><span>Today</span><span class="smart-view-count" id="todayCount">0</span></button>
+      <button class="smart-view" type="button" data-view="overdue"><span aria-hidden="true">⏰</span><span>Overdue</span><span class="smart-view-count" id="overdueCount">0</span></button>
+      <button class="smart-view" type="button" data-view="trash"><span aria-hidden="true">🗑️</span><span>Trash</span><span class="smart-view-count" id="trashCount">0</span></button>
+    </nav>
+
     <div class="side-section-head">
       <span>Boards</span>
       <button class="icon-btn small" id="newBoardSide" title="New board" aria-label="New board"><span data-icon="plus"></span></button>
@@ -41,9 +61,9 @@
 
     <div class="side-footer">
       <div class="side-actions">
-        <button class="side-action" id="themeBtn" title="Toggle theme"><span data-icon="moon"></span><span>Theme</span></button>
-        <button class="side-action" id="importBtn" title="Import a backup"><span data-icon="upload"></span><span>Import</span></button>
-        <button class="side-action" id="exportBtn" title="Export a backup"><span data-icon="download"></span><span>Export</span></button>
+        <button class="side-action" id="themeBtn" title="Themes"><span data-icon="brush"></span><span>Themes</span></button>
+        <button class="side-action" id="importBtn" title="Import a backup"><span data-icon="download"></span><span>Import</span></button>
+        <button class="side-action" id="exportBtn" title="Export a backup"><span data-icon="upload"></span><span>Export</span></button>
         <button class="side-action" id="helpBtn" title="Keyboard shortcuts"><span data-icon="help"></span><span>Help</span></button>
       </div>
       <div class="saved-status" id="savedStatus"><span class="saved-dot"></span><span id="savedText">Saved locally</span></div>
@@ -55,15 +75,16 @@
     <header class="topbar">
       <button class="icon-btn" id="sidebarToggle" title="Toggle sidebar" aria-label="Toggle sidebar"><span data-icon="sidebar"></span></button>
       <button class="icon-btn" id="backBtn" title="Back to previous board" aria-label="Back" disabled><span data-icon="arrowLeft"></span></button>
+      <!-- Board identity: the icon is display-only; right-click the title for board options. -->
       <div class="board-heading">
         <div class="board-title-row">
-          <button class="board-emoji" id="boardEmoji" title="Board options" aria-label="Board options"></button>
-          <input id="boardTitle" class="board-title" spellcheck="false" aria-label="Board name" maxlength="80">
-          <button class="icon-btn small board-menu-btn" id="boardMenuBtn" title="Board options" aria-label="Board options"><span data-icon="chevronDown"></span></button>
+          <span class="board-emoji" id="boardEmoji" aria-hidden="true"></span>
+          <input id="boardTitle" class="board-title" spellcheck="false" aria-label="Board name" title="Right-click for board options" maxlength="80">
         </div>
         <div class="board-meta" id="boardMeta"></div>
       </div>
       <div class="topbar-right">
+        <button class="icon-btn" id="quickCaptureBtn" title="Quick capture (Ctrl/Cmd+Shift+Space)" aria-label="Quick capture"><span data-icon="note"></span></button>
         <button class="search-btn" id="searchBtn" title="Search (Ctrl/Cmd+K)">
           <span data-icon="search"></span><span class="search-label">Search</span><kbd>⌘K</kbd>
         </button>
@@ -78,6 +99,7 @@
         <svg id="connections" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
         <div id="items"></div>
       </div>
+      <section class="task-view" id="taskView" aria-label="Tasks" hidden></section>
 
       <div class="empty-state" id="emptyState" hidden>
         <div class="empty-card">
@@ -96,7 +118,7 @@
 
       <div class="zoombar" role="group" aria-label="Zoom">
         <button class="zoom-btn" id="zoomOut" title="Zoom out" aria-label="Zoom out"><span data-icon="minus"></span></button>
-        <button class="zoom-label" id="zoomLabel" title="Reset zoom">100%</button>
+        <button class="zoom-label" id="zoomLabel" title="Reset zoom" aria-label="Reset zoom">100%</button>
         <button class="zoom-btn" id="zoomIn" title="Zoom in" aria-label="Zoom in"><span data-icon="plus"></span></button>
         <span class="zoom-divider"></span>
         <button class="zoom-btn" id="fitBtn" title="Fit to content (Ctrl+0)" aria-label="Fit to content"><span data-icon="fit"></span></button>
@@ -108,6 +130,8 @@
         <button class="tool" data-add="image"><span data-icon="image"></span><span>Image</span></button>
         <button class="tool" data-add="link"><span data-icon="link"></span><span>Link</span></button>
         <button class="tool" data-add="board"><span data-icon="board"></span><span>Board</span></button>
+        <button class="tool" data-add="table"><span data-icon="table"></span><span>Table</span></button>
+        <button class="tool" data-add="file"><span data-icon="file"></span><span>Files</span></button>
       </div>
 
       <div class="marquee" id="marquee" hidden></div>
@@ -119,6 +143,7 @@
 <div id="contextMenu" class="context-menu" hidden></div>
 <div id="toasts" class="toasts" aria-live="polite"></div>
 <input type="file" id="imageInput" accept="image/*" multiple hidden>
+<input type="file" id="fileInput" accept="application/pdf,video/mp4,.pdf,.mp4" multiple hidden>
 <input type="file" id="importInput" accept=".json,application/json" hidden>
 
 <script src="app.js"></script>
